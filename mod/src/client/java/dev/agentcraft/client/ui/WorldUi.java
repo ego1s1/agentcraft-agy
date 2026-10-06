@@ -92,10 +92,11 @@ public final class WorldUi {
 
 	/** The GUI atlas drawn opaque in the solid pass ({@link Layer#SOLID}). */
 	public static RenderType guiAtlasSolid() {
-		// Shader pipelines (Iris and forks) cannot use our custom program: fall back
-		// to the vanilla text pipeline while a pack is active (see ShaderCompat).
+		// Shader pipelines (Iris and forks) only know stock programs: while a pack is
+		// active, use the stock entity-cutout type (solid pass, depth writes, cutout
+		// corners, Iris-native) instead of our custom clone. See ShaderCompat.
 		if (ShaderCompat.shadersActive()) {
-			return guiAtlas();
+			return RenderTypes.entityCutout(Sheets.GUI_SHEET);
 		}
 		if (guiAtlasSolidType == null) {
 			solidPipeline = RenderPipeline.builder(RenderPipelines.WORLD_TEXT_SNIPPET)
