@@ -125,7 +125,13 @@ fi
 [ -z "$profile" ] && profile="$backend_val"
 [ -z "$home_dir" ] && home_dir="${AGENTCRAFT_HOME:-$HOME/.agentcraft}"
 
-node "$ROOT/tools/unix.mjs" launch --no-game "$@" || exit "$?"
+# Someone (you, a previous run) may already have a Foreman on this port that
+# this launcher did not start: reuse it instead of failing on the port clash.
+if command -v curl >/dev/null 2>&1 && curl -s --max-time 2 "http://127.0.0.1:$port/health" 2>/dev/null | grep -q '"status":"ok"'; then
+  echo "Reusing Foreman on :$port ..."
+else
+  node "$ROOT/tools/unix.mjs" launch --no-game "$@" || exit "$?"
+fi
 
 PRISM_BIN="$(command -v prismlauncher 2>/dev/null || true)"
 if [ -z "$PRISM_BIN" ] && [ -x "/Applications/PrismLauncher.app/Contents/MacOS/prismlauncher" ]; then
