@@ -656,7 +656,7 @@ To update task status, report activity, communicate, or ask questions, run \`age
 
 Example: run_command \`agentcraft update-task --task-id ${job.taskId ?? 'AC-1'} --status review --summary "done"\`.`;
 
-      const baseModel = role === 'lead' ? (this.cfg.model ?? this.cfg.leadModel ?? 'opencode/muse-spark-1.3') : (this.cfg.model ?? this.cfg.workerModel ?? 'opencode/muse-spark-1.3');
+      const baseModel = role === 'lead' ? (this.cfg.model ?? this.cfg.leadModel ?? 'opencode-go/muse-spark-1.3-contributor') : (this.cfg.model ?? this.cfg.workerModel ?? 'opencode-go/muse-spark-1.3-contributor');
       const effort = role === 'lead' ? (this.cfg.leadEffort ?? this.cfg.effort) : this.cfg.effort;
       const model = ocModelWithEffort(baseModel, effort);
       const agent = role === 'lead' ? this.cfg.leadAgent : this.cfg.workerAgent;

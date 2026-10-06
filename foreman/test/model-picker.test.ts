@@ -22,7 +22,7 @@ function testForeman(backend: "antigravity" | "claude" | "opencode" = "opencode"
   };
   base[backend] =
     backend === "opencode"
-      ? { ocBin: "opencode", leadModel: "opencode/muse-spark-1.3", workerModel: "opencode/muse-spark-1.3", effort: "medium" }
+      ? { ocBin: "opencode", leadModel: "opencode-go/muse-spark-1.3-contributor", workerModel: "opencode-go/muse-spark-1.3-contributor", effort: "medium" }
       : backend === "antigravity"
         ? { agyBin: "agy", effort: "medium" }
         : { effort: "medium" };
@@ -39,7 +39,7 @@ describe("/model picker", () => {
     const res = await model(fm, "/model");
     expect(res.ok).toBe(true);
     expect(res.text).toMatch(/Backend: opencode/);
-    expect(res.text).toMatch(/Lead: opencode\/muse-spark-1.3/);
+    expect(res.text).toMatch(/Lead: opencode-go\/muse-spark-1.3-contributor/);
     expect(res.text).toMatch(/\/model list/);
   });
 
@@ -71,7 +71,7 @@ describe("/model picker", () => {
     const fm = testForeman("opencode");
     await model(fm, "/model lead opencode/gpt-5.5-pro");
     expect((fm as any).config.opencode.leadModel).toBe("opencode/gpt-5.5-pro");
-    expect((fm as any).config.opencode.workerModel).toBe("opencode/muse-spark-1.3");
+    expect((fm as any).config.opencode.workerModel).toBe("opencode-go/muse-spark-1.3-contributor");
 
     await model(fm, "/model worker opencode/gpt-5.4-mini");
     expect((fm as any).config.opencode.workerModel).toBe("opencode/gpt-5.4-mini");
@@ -80,10 +80,10 @@ describe("/model picker", () => {
   it("explains a model with details", async () => {
     const fm = testForeman("opencode");
     (fm as any).modelList = () => [
-      { name: "opencode/muse-spark-1.3", detail: "balanced default", live: false },
+      { name: "opencode-go/muse-spark-1.3-contributor", detail: "balanced default", live: false },
     ];
     const res = await model(fm, "/model details spark");
-    expect(res.text).toMatch(/opencode\/muse-spark-1.3/);
+    expect(res.text).toMatch(/opencode-go\/muse-spark-1.3-contributor/);
     expect(res.text).toMatch(/Preset: medium/);
 
     const missing = await model(fm, "/model details nope-not-real");

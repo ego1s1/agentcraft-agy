@@ -60,7 +60,7 @@ describe('loadConfig argument checking', () => {
     const cfg = load([]);
     expect(cfg.backend).toBe('opencode');
     expect(cfg.opencode.ocBin).toBe('opencode');
-    expect(cfg.opencode.leadModel).toBe('opencode/muse-spark-1.3');
+    expect(cfg.opencode.leadModel).toBe('opencode-go/muse-spark-1.3-contributor');
     expect(cfg.opencode.transientRetries).toBe(3);
     expect(cfg.notify).toBe(true);
   });

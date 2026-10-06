@@ -37,7 +37,7 @@ npm run start -- --backend claude --repo C:\path\to\your\repo --use-claude-login
 # agents on OpenCode (default backend): needs the `opencode` CLI on PATH
 npm run start -- --repo C:\path\to\your\repo
 # --opencode-bin <path> when opencode is not on PATH; --opencode-model <m>
-# (or --lead-model / --worker-model; default opencode/muse-spark-1.3);
+# (or --lead-model / --worker-model; default opencode-go/muse-spark-1.3-contributor);
 # --preset heavy|medium|light (effort selects the model #variant)
 
 # real agents on Antigravity instead: needs the `agy` CLI on PATH (`agy --version`

@@ -38,7 +38,7 @@ const TABLE: Record<BackendName, Record<PresetName, Preset>> = {
   },
   opencode: {
     heavy: { leadModel: "opencode/claude-opus-5-5", workerModel: "opencode/claude-sonnet-5-5", effort: "high" },
-    medium: { leadModel: "opencode/muse-spark-1.3", workerModel: "opencode/muse-spark-1.3", effort: "medium" },
+    medium: { leadModel: "opencode-go/muse-spark-1.3-contributor", workerModel: "opencode-go/muse-spark-1.3-contributor", effort: "medium" },
     light: { leadModel: "opencode/space-bunny-free", workerModel: "opencode/space-bunny-free", effort: "low" },
   },
 };
@@ -82,7 +82,7 @@ export const KNOWN_MODELS: Record<BackendName, ModelInfo[]> = {
   opencode: [
     { name: "opencode/claude-opus-5-5", detail: "heavy preset lead" },
     { name: "opencode/claude-sonnet-5-5", detail: "heavy preset worker" },
-    { name: "opencode/muse-spark-1.3", detail: "medium preset; balanced default" },
+    { name: "opencode-go/muse-spark-1.3-contributor", detail: "medium preset; balanced default" },
     { name: "opencode/gpt-5.5", detail: "strong general model" },
     { name: "opencode/gpt-5.4-mini", detail: "fast inexpensive model" },
     { name: "opencode/space-bunny-free", detail: "light preset; free tier" },

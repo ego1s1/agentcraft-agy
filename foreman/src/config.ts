@@ -362,8 +362,8 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     },
     opencode: {
       ocBin: str(flags['opencode-bin']) ?? str(env.AGENTCRAFT_OC_BIN) ?? str(fileOpencode.ocBin) ?? 'opencode',
-      leadModel: str(flags['lead-model']) ?? str(flags['opencode-model']) ?? model ?? str(env.AGENTCRAFT_LEAD_MODEL) ?? str(fileOpencode.leadModel) ?? (ocPreset ? resolvePreset('opencode', ocPreset).leadModel : undefined) ?? 'opencode/muse-spark-1.3',
-      workerModel: str(flags['worker-model']) ?? str(flags['opencode-model']) ?? model ?? str(env.AGENTCRAFT_WORKER_MODEL) ?? str(fileOpencode.workerModel) ?? (ocPreset ? resolvePreset('opencode', ocPreset).workerModel : undefined) ?? 'opencode/muse-spark-1.3',
+      leadModel: str(flags['lead-model']) ?? str(flags['opencode-model']) ?? model ?? str(env.AGENTCRAFT_LEAD_MODEL) ?? str(fileOpencode.leadModel) ?? (ocPreset ? resolvePreset('opencode', ocPreset).leadModel : undefined) ?? 'opencode-go/muse-spark-1.3-contributor',
+      workerModel: str(flags['worker-model']) ?? str(flags['opencode-model']) ?? model ?? str(env.AGENTCRAFT_WORKER_MODEL) ?? str(fileOpencode.workerModel) ?? (ocPreset ? resolvePreset('opencode', ocPreset).workerModel : undefined) ?? 'opencode-go/muse-spark-1.3-contributor',
       effort: flags.effort !== undefined ? effort(flags.effort, 'medium') : ((fileOpencode.effort ?? (ocPreset ? resolvePreset('opencode', ocPreset).effort : undefined)) as EffortLevel | undefined),
       leadEffort: flags['lead-effort'] !== undefined ? effort(flags['lead-effort'], 'medium') : ((fileOpencode.leadEffort ?? (ocPreset ? resolvePreset('opencode', ocPreset).effort : undefined)) as EffortLevel | undefined),
       leadAgent: str(flags['opencode-lead-agent']) ?? str(env.AGENTCRAFT_OC_LEAD_AGENT) ?? str(fileOpencode.leadAgent),

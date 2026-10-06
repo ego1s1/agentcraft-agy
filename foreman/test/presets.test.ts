@@ -21,7 +21,7 @@ describe("presets", () => {
       }
     }
     expect(resolvePreset("opencode", "medium")).toMatchObject({
-      leadModel: "opencode/muse-spark-1.3",
+      leadModel: "opencode-go/muse-spark-1.3-contributor",
       effort: "medium",
     });
     expect(resolvePreset("antigravity", "medium").workerModel).toBe("gemini-3.8-flash-low");
