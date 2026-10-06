@@ -21,7 +21,7 @@ const runFile = (kind, profile) => path.join(runDir, `unix-${kind}-${profile}.js
 
 function usage(code = 0) {
   console.log(`AgentCraft launcher (macOS, Linux)
-  node tools/unix.mjs launch [--backend sim|claude|antigravity] [--repo PATH] [--use-claude-login]
+  node tools/unix.mjs launch [--backend sim|claude|antigravity|opencode] [--repo PATH] [--use-claude-login]
                             [--home PATH] [--profile NAME] [--port N] [--dev-port N]
                             [--dev] [--showcase busy|late] [--reset]
                             [--no-game] [--no-foreman] [--no-wait]
@@ -29,7 +29,7 @@ function usage(code = 0) {
                             [--foreman-arg VALUE] (repeatable)
   node tools/unix.mjs stop [--game] [--foreman] [--profile NAME] [--stop-daemon]
 
-Default: Claude backend, ~/.agentcraft, ports 7878/7879. --dev mutes the game,
+Default: opencode backend, ~/.agentcraft, ports 7878/7879. --dev mutes the game,
 keeps it from taking focus, and disables desktop notifications.`);
   process.exit(code);
 }
@@ -51,14 +51,15 @@ function options(argv) {
     else throw new Error(`unknown option: --${key}`);
   }
   if (!['launch', 'stop'].includes(out.action)) usage(out.action ? 2 : 0);
-  out.backend ??= process.env.AGENTCRAFT_BACKEND || 'claude';
+  out.backend ??= process.env.AGENTCRAFT_BACKEND || 'opencode';
   if (out.showcase) {
     if (!['busy', 'late'].includes(out.showcase)) throw new Error('showcase must be busy or late');
     out.backend = 'sim';
     out.profile ??= out.showcase === 'late' ? 'showcase-late' : 'showcase';
   }
   if (out.backend === 'agy') out.backend = 'antigravity';
-  if (!['sim', 'claude', 'antigravity'].includes(out.backend)) throw new Error('backend must be sim, claude or antigravity');
+  if (out.backend === 'oc') out.backend = 'opencode';
+  if (!['sim', 'claude', 'antigravity', 'opencode'].includes(out.backend)) throw new Error('backend must be sim, claude, antigravity or opencode');
   out.profile ??= out.backend;
   if (!/^[\w-]+$/.test(out.profile)) throw new Error('profile must contain only letters, digits, _ or -');
   out.home = path.resolve(out.home ?? process.env.AGENTCRAFT_HOME ?? path.join(os.homedir(), '.agentcraft'));

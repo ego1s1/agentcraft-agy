@@ -87,7 +87,7 @@ public final class Protocol {
 	}
 
 	public enum BackendName implements Wire {
-		SIM, CLAUDE, ANTIGRAVITY, UNKNOWN
+		SIM, CLAUDE, ANTIGRAVITY, OPENCODE, UNKNOWN
 	}
 
 	public enum AuthStatus implements Wire {
@@ -211,7 +211,7 @@ public final class Protocol {
 
 	public record ForemanStatus(String version, BackendName backend, AuthStatus auth, @Nullable String message, @Nullable String account,
 		@Nullable Double speed, @Nullable Boolean showcase, @Nullable Double costUsd, @Nullable String userName,
-		@Nullable String effort, @Nullable String model) {
+		@Nullable String effort, @Nullable String model, @Nullable String preset) {
 		public ForemanStatus {
 			version = version == null ? "?" : version;
 			backend = backend == null ? BackendName.UNKNOWN : backend;

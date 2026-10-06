@@ -1,8 +1,8 @@
-// Antigravity (agy CLI) backend: runs lead (Marlow) and workers as child processes with streaming JSON.
+// OpenCode CLI backend: runs lead (Marlow) and workers as `opencode run` child processes with JSON events.
 import { spawnSync, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AntigravityConfig } from '../../config.js';
+import type { OpencodeConfig } from '../../config.js';
 import { ClientError, type Backend, type Foreman } from '../../foreman.js';
 import { withGitSafety } from '../../gitsafety.js';
 import { agentGitIdentity } from '../../util/git.js';
@@ -15,10 +15,11 @@ import { killTree, processTable, type ProcEntry } from '../../util/proc.js';
 import { truncate } from '../../util/text.js';
 import { leadSystemPrompt, planPrompt, RESUME_PROMPT, reviewPrompt, workerSystemPrompt, workPrompt } from '../claude/prompts.js';
 import { fetchPulls, githubOrigin, pullBriefs, type PullRequest } from '../../pulls.js';
-import { AgyStreamMapper, type TurnStats } from './stream.js';
-import { AgyRunner } from './runner.js';
-import { isTransientError, TRANSIENT_RETRY_DELAYS_MS, transientRetryDelayMs } from './transient.js';
-import { executeTool } from './tools.js';
+import { OcStreamMapper, type TurnStats } from './stream.js';
+import { OcRunner } from './runner.js';
+import { isTransientError, TRANSIENT_RETRY_DELAYS_MS, transientRetryDelayMs } from '../antigravity/transient.js';
+import { executeTool } from '../antigravity/tools.js';
+import { ocModelWithEffort } from '../../presets.js';
 import { type ToolHooks, type TurnHandle } from '../claude/tools.js';
 import { userName } from '../../user.js';
 
@@ -53,7 +54,7 @@ interface Inflight {
   startedAt: number;
 }
 
-interface AntigravityState {
+interface OpencodeState {
   inflight: Record<string, Inflight>;
   ciFixes: Record<string, number>;
   stopped: string[];
@@ -137,15 +138,15 @@ function prRefs(text: string): number[] {
   return [...new Set(nums)];
 }
 
-export interface AntigravityBackendOptions {
-  runner?: AgyRunner;
+export interface OpencodeBackendOptions {
+  runner?: OcRunner;
   skipAuthCheck?: boolean;
   /** backoff between transient-error retries (attempt 0, 1, 2, ...); default TRANSIENT_RETRY_DELAYS_MS */
   retryDelaysMs?: readonly number[];
 }
 
-export class AntigravityBackend implements Backend {
-  readonly name = 'antigravity' as const;
+export class OpencodeBackend implements Backend {
+  readonly name = 'opencode' as const;
   private queues = new Map<string, Job[]>();
   private running = new Map<string, Running>();
   private pausedJobs = new Map<string, Job>();
@@ -160,14 +161,14 @@ export class AntigravityBackend implements Backend {
   private handoffs = new Map<string, Promise<void>>();
   private retryTimer: NodeJS.Timeout | undefined;
   private retryDelayMs = 2000;
-  private readonly runner: AgyRunner;
+  private readonly runner: OcRunner;
 
   constructor(
     private fm: Foreman,
-    private cfg: AntigravityConfig,
-    private opts: AntigravityBackendOptions = {},
+    private cfg: OpencodeConfig,
+    private opts: OpencodeBackendOptions = {},
   ) {
-    this.runner = opts.runner ?? new AgyRunner(cfg.agyBin ?? 'agy');
+    this.runner = opts.runner ?? new OcRunner(cfg.ocBin ?? 'opencode');
     this.hooks = {
       onReview: () => {
         /* handled after the worker's turn ends */
@@ -183,12 +184,12 @@ export class AntigravityBackend implements Backend {
     };
   }
 
-  private get st(): AntigravityState {
+  private get st(): OpencodeState {
     const b = this.fm.store.data.backend as Record<string, unknown>;
-    let s = b.antigravity as AntigravityState | undefined;
+    let s = b.opencode as OpencodeState | undefined;
     if (!s) {
       s = { inflight: {}, ciFixes: {}, stopped: [] };
-      b.antigravity = s;
+      b.opencode = s;
     }
     s.inflight ??= {};
     s.ciFixes ??= {};
@@ -235,22 +236,22 @@ export class AntigravityBackend implements Backend {
 
   async checkAuth(): Promise<boolean> {
     if (this.opts.skipAuthCheck) {
-      this.fm.setStatus({ auth: 'ok', message: `Antigravity (lead ${this.cfg.leadModel}, workers ${this.cfg.workerModel})` });
+      this.fm.setStatus({ auth: 'ok', message: `OpenCode (lead ${this.cfg.leadModel}, workers ${this.cfg.workerModel})` });
       return true;
     }
-    const bin = this.cfg.agyBin ?? 'agy';
+    const bin = this.cfg.ocBin ?? 'opencode';
     try {
       const res = spawnSync(bin, ['--version'], { encoding: 'utf8', timeout: 5000 });
       if (res.status === 0 || res.stdout) {
         this.authFailed = false;
         const ver = (res.stdout || '').trim();
-        this.fm.setStatus({ auth: 'ok', message: `Antigravity ${ver} (lead ${this.cfg.leadModel}, workers ${this.cfg.workerModel})` });
-        this.fm.log.info(`antigravity probe ok (${bin} ${ver})`);
+        this.fm.setStatus({ auth: 'ok', message: `OpenCode ${ver} (lead ${this.cfg.leadModel}, workers ${this.cfg.workerModel})` });
+        this.fm.log.info(`opencode probe ok (${bin} ${ver})`);
         return true;
       }
       throw new Error(res.stderr || `exit code ${res.status}`);
     } catch (e) {
-      const msg = `Antigravity CLI check failed (${bin}): ${(e as Error).message}. Verify that \`agy\` is in PATH or pass --agy-bin.`;
+      const msg = `OpenCode CLI check failed (${bin}): ${(e as Error).message}. Verify that \`opencode\` is on PATH or pass --opencode-bin.`;
       this.authFailed = true;
       this.fm.setStatus({ auth: 'failed', message: msg });
       this.fm.log.error(msg);
@@ -444,7 +445,7 @@ export class AntigravityBackend implements Backend {
   async submitGoal(goal: Goal): Promise<void> {
     if (this.authFailed) {
       this.fm.setGoal(goal.id, { status: 'failed' });
-      throw new ClientError(`Antigravity is not available: ${this.fm.status.message ?? 'auth failed'}`);
+      throw new ClientError(`OpenCode is not available: ${this.fm.status.message ?? 'auth failed'}`);
     }
     const repo = this.fm.repos.require(goal.repoId!);
     if (this.isStopped(LEAD)) {
@@ -655,14 +656,15 @@ To update task status, report activity, communicate, or ask questions, run \`age
 
 Example: run_command \`agentcraft update-task --task-id ${job.taskId ?? 'AC-1'} --status review --summary "done"\`.`;
 
-      const model = role === 'lead' ? (this.cfg.model ?? this.cfg.leadModel ?? 'gemini-3.8-flash-high') : (this.cfg.model ?? this.cfg.workerModel ?? 'gemini-3.8-flash-low');
+      const baseModel = role === 'lead' ? (this.cfg.model ?? this.cfg.leadModel ?? 'opencode/muse-spark-1.3') : (this.cfg.model ?? this.cfg.workerModel ?? 'opencode/muse-spark-1.3');
       const effort = role === 'lead' ? (this.cfg.leadEffort ?? this.cfg.effort) : this.cfg.effort;
-      const maxTurns = role === 'lead' ? this.cfg.maxTurnsLead : this.cfg.maxTurnsWorker;
+      const model = ocModelWithEffort(baseModel, effort);
+      const agent = role === 'lead' ? this.cfg.leadAgent : this.cfg.workerAgent;
 
       this.fm.agentLog(agentId, 'text', `${resume ? 'Resuming' : 'Starting'} ${job.kind}${job.taskId ? ` ${job.taskId}` : ''} (${model})`);
       if (job.kind === 'followup' || job.resumed) this.fm.agentLog(agentId, 'text', truncate(job.prompt, 400));
 
-      const mapper = new AgyStreamMapper(this.fm, agentId, cwd, role);
+      const mapper = new OcStreamMapper(this.fm, agentId, cwd, role);
       const timer = setTimeout(() => this.abortTurn(entry, 'timeout'), TURN_TIMEOUT_MS);
       timer.unref?.();
 
@@ -679,9 +681,8 @@ Example: run_command \`agentcraft update-task --task-id ${job.taskId ?? 'AC-1'} 
           cwd,
           signal: abort.signal,
           model,
-          effort,
-          maxTurns,
-          agyBin: this.cfg.agyBin,
+          agent,
+          ocBin: this.cfg.ocBin,
           streamMapper: mapper,
           env: this.env({ agentId, cwd, role }),
           onChildSpawned: (child) => {

@@ -56,6 +56,42 @@ describe('loadConfig argument checking', () => {
     expect(cfgAgy.backend).toBe('antigravity');
   });
 
+  it('defaults to the opencode backend with medium preset models', () => {
+    const cfg = load([]);
+    expect(cfg.backend).toBe('opencode');
+    expect(cfg.opencode.ocBin).toBe('opencode');
+    expect(cfg.opencode.leadModel).toBe('opencode/muse-spark-1.3');
+    expect(cfg.opencode.transientRetries).toBe(3);
+    expect(cfg.notify).toBe(true);
+  });
+
+  it('accepts the documented opencode flags and oc alias', () => {
+    const cfg = load(['--backend', 'opencode', '--opencode-bin', '/usr/local/bin/opencode', '--opencode-model', 'opencode/gpt-5.5', '--opencode-lead-agent', 'plan', '--effort', 'high', '--preset', 'light', '--workers', 'kit']);
+    expect(cfg.opencode.ocBin).toBe('/usr/local/bin/opencode');
+    expect(cfg.opencode.leadAgent).toBe('plan');
+    expect(cfg.opencode.workers).toEqual(['kit']);
+    // explicit flags win over the preset
+    expect(cfg.opencode.leadModel).toBe('opencode/gpt-5.5');
+    expect(cfg.opencode.effort).toBe('high');
+    expect(cfg.opencode.preset).toBe('light');
+
+    const cfgOc = load(['--backend', 'oc']);
+    expect(cfgOc.backend).toBe('opencode');
+  });
+
+  it('applies presets below explicit flags', () => {
+    const cfg = load(['--backend', 'antigravity', '--preset', 'heavy']);
+    expect(cfg.antigravity.leadModel).toBe('gemini-3.8-flash-high');
+    expect(cfg.antigravity.workerModel).toBe('gemini-3.8-flash-high');
+    expect(cfg.antigravity.preset).toBe('heavy');
+
+    const cfg2 = load(['--backend', 'antigravity', '--preset', 'heavy', '--worker-model', 'custom']);
+    expect(cfg2.antigravity.workerModel).toBe('custom');
+    expect(cfg2.antigravity.leadModel).toBe('gemini-3.8-flash-high');
+
+    expect(() => load(['--preset', 'xl'])).toThrow(/unknown preset/);
+  });
+
   it('accepts the sim flags launch.ps1 passes', () => {
     const cfg = load(['--backend', 'sim', '--profile', 'x', '--port', '41000', '--reset', '--showcase', 'late', '--speed', '2', '--autostart']);
     expect(cfg.sim.showcaseAt).toBe('showcase-late');

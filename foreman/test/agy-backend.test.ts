@@ -44,7 +44,7 @@ describe("AntigravityBackend orchestration", () => {
           });
 
           const match = /Created (t\d+)/.exec(createRes.text);
-          createdTaskId = match ? match[1] : "t1";
+          createdTaskId = match?.[1] ?? "t1";
 
           streamMapper.handleEvent({
             event: "result",

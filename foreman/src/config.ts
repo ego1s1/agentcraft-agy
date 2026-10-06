@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readJson } from './util/fsx.js';
 import type { BackendName } from './protocol.js';
+import { isPreset, resolvePreset, type PresetName } from './presets.js';
 import { defaultUserName } from './user.js';
 import type { EffortLevel } from '@anthropic-ai/claude-agent-sdk';
 
@@ -40,6 +41,8 @@ export interface ClaudeConfig {
   useClaudeLogin: boolean;
   /** command prefixes the lead runs without asking, e.g. `bd show` */
   leadReadCommands: string[];
+  /** weight preset (heavy|medium|light); explicit model/effort flags win over it */
+  preset?: PresetName;
 }
 
 
@@ -65,6 +68,37 @@ export interface AntigravityConfig {
   leadReview: boolean;
   /** automatic retries (with backoff) when a turn dies on a transient network error (default 3, 0 disables) */
   transientRetries: number;
+  /** weight preset (heavy|medium|light); explicit model/effort flags win over it */
+  preset?: PresetName;
+}
+
+export interface OpencodeConfig {
+  ocBin: string;
+  leadModel: string;
+  workerModel: string;
+  /** shared model override for lead and workers (set via /model or config.set) */
+  model?: string;
+  effort?: EffortLevel;
+  leadEffort?: EffortLevel;
+  /** opencode agent for the lead / workers (`opencode run --agent`) */
+  leadAgent?: string;
+  workerAgent?: string;
+  maxTurnsLead: number;
+  maxTurnsWorker: number;
+  /** max workers running a turn at the same time */
+  maxConcurrent: number;
+  /** worker ids in the team (subset of the cast) */
+  workers: string[];
+  /** test command for CI after a worker finishes (default: detect, e.g. `npm test`) */
+  ciCommand?: string;
+  /** resume interrupted sessions on Foreman start */
+  resumeOnStart: boolean;
+  /** lead reviews each finished task before the merge decision reaches the user */
+  leadReview: boolean;
+  /** automatic retries (with backoff) when a turn dies on a transient network error (default 3, 0 disables) */
+  transientRetries: number;
+  /** weight preset (heavy|medium|light); explicit model/effort flags win over it */
+  preset?: PresetName;
 }
 
 export type ShowcaseCheckpoint = 'showcase' | 'showcase-late';
@@ -110,6 +144,7 @@ export interface Config {
   signMerges: boolean;
   claude: ClaudeConfig;
   antigravity: AntigravityConfig;
+  opencode: OpencodeConfig;
   sim: SimConfig;
 }
 
@@ -210,7 +245,7 @@ export const KNOWN_FLAGS = new Set([
   'toast-silent', 'debug', 'quiet', 'allow-browser-origins', 'repo-poll-ms', 'merge-style', 'sign-merges',
   'agy-bin', 'agy-model', 'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
   'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'transient-retries', 'speed', 'seed', 'showcase', 'auto-answer',
-  'ambient', 'lead-read-commands',
+  'ambient', 'lead-read-commands', 'preset', 'opencode-bin', 'opencode-model', 'opencode-lead-agent', 'opencode-worker-agent',
 ]);
 
 /**
@@ -233,13 +268,15 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
   const file = readJson<Record<string, unknown>>(path.join(home, 'config.json')) ?? {};
   const fileClaude = (file.claude ?? {}) as Record<string, unknown>;
   const fileAntigravity = (file.antigravity ?? {}) as Record<string, unknown>;
+  const fileOpencode = (file.opencode ?? {}) as Record<string, unknown>;
   const fileSim = (file.sim ?? {}) as Record<string, unknown>;
   const pick = (k: string, envKey?: string): unknown => flags[k] ?? (envKey ? env[envKey] : undefined) ?? file[k];
 
-  let backendRaw = String(pick('backend', 'AGENTCRAFT_BACKEND') ?? 'claude');
+  let backendRaw = String(pick('backend', 'AGENTCRAFT_BACKEND') ?? 'opencode');
   if (backendRaw === 'agy') backendRaw = 'antigravity';
-  if (backendRaw !== 'sim' && backendRaw !== 'claude' && backendRaw !== 'antigravity') {
-    throw new Error(`unknown backend "${backendRaw}" (use sim, claude or antigravity)`);
+  if (backendRaw === 'oc') backendRaw = 'opencode';
+  if (backendRaw !== 'sim' && backendRaw !== 'claude' && backendRaw !== 'antigravity' && backendRaw !== 'opencode') {
+    throw new Error(`unknown backend "${backendRaw}" (use sim, claude, antigravity or opencode)`);
   }
   const backend = backendRaw as BackendName;
   const profile = str(pick('profile', 'AGENTCRAFT_PROFILE')) ?? backend;
@@ -260,6 +297,14 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
       : ['juniper', 'kit', 'wren'];
 
   const model = str(flags.model);
+  const presetName = (v: unknown): PresetName | undefined => {
+    if (v === undefined) return undefined;
+    if (!isPreset(v)) throw new Error(`unknown preset "${String(v)}" (use heavy, medium, light)`);
+    return v.toLowerCase() as PresetName;
+  };
+  const claudePreset = presetName(flags.preset ?? fileClaude.preset);
+  const agyPreset = presetName(flags.preset ?? fileAntigravity.preset);
+  const ocPreset = presetName(flags.preset ?? fileOpencode.preset);
   const cfg: Config = {
     backend,
     userName: (str(pick('user-name', 'AGENTCRAFT_USER_NAME')) ?? str(file.userName))?.trim().slice(0, 40) || defaultUserName(),
@@ -272,7 +317,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     goal: str(flags.goal),
     autostart: bool(flags.autostart, false) || !!str(flags.goal),
     reset: bool(flags.reset, false),
-    notify: bool(pick('notify', 'AGENTCRAFT_NOTIFY'), backend === 'claude' || backend === 'antigravity'),
+    notify: bool(pick('notify', 'AGENTCRAFT_NOTIFY'), backend === 'claude' || backend === 'antigravity' || backend === 'opencode'),
     toastSilent: bool(pick('toast-silent', 'AGENTCRAFT_TOAST_SILENT'), false),
     debug: bool(pick('debug', 'AGENTCRAFT_DEBUG'), false),
     quiet: bool(flags.quiet, false),
@@ -281,12 +326,13 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     repoPollMs: Math.max(500, num(pick('repo-poll-ms'), 10_000)),
     mergeStyle: mergeStyle(pick('merge-style', 'AGENTCRAFT_MERGE_STYLE')),
     // the sim answers merges unattended (screenshot QA, --auto-answer): never sign there
-    signMerges: bool(pick('sign-merges', 'AGENTCRAFT_SIGN_MERGES'), backend === 'claude' || backend === 'antigravity'),
+    signMerges: bool(pick('sign-merges', 'AGENTCRAFT_SIGN_MERGES'), backend === 'claude' || backend === 'antigravity' || backend === 'opencode'),
     claude: {
-      leadModel: str(flags['lead-model']) ?? model ?? str(env.AGENTCRAFT_LEAD_MODEL) ?? str(fileClaude.leadModel) ?? 'opus',
-      workerModel: str(flags['worker-model']) ?? model ?? str(env.AGENTCRAFT_WORKER_MODEL) ?? str(fileClaude.workerModel) ?? 'sonnet',
-      effort: effort(flags.effort ?? fileClaude.effort, 'medium'),
-      leadEffort: effort(flags['lead-effort'] ?? flags.effort ?? fileClaude.leadEffort, 'medium'),
+      leadModel: str(flags['lead-model']) ?? model ?? str(env.AGENTCRAFT_LEAD_MODEL) ?? str(fileClaude.leadModel) ?? (claudePreset ? resolvePreset('claude', claudePreset).leadModel : undefined) ?? 'opus',
+      workerModel: str(flags['worker-model']) ?? model ?? str(env.AGENTCRAFT_WORKER_MODEL) ?? str(fileClaude.workerModel) ?? (claudePreset ? resolvePreset('claude', claudePreset).workerModel : undefined) ?? 'sonnet',
+      effort: effort(flags.effort ?? fileClaude.effort ?? (claudePreset ? resolvePreset('claude', claudePreset).effort : undefined), 'medium'),
+      leadEffort: effort(flags['lead-effort'] ?? flags.effort ?? fileClaude.leadEffort ?? (claudePreset ? resolvePreset('claude', claudePreset).effort : undefined), 'medium'),
+      preset: claudePreset,
       maxTurnsLead: num(flags['max-turns-lead'] ?? flags['max-turns'] ?? fileClaude.maxTurnsLead, 40),
       maxTurnsWorker: num(flags['max-turns-worker'] ?? flags['max-turns'] ?? fileClaude.maxTurnsWorker, 80),
       maxConcurrent: Math.max(1, num(flags['max-concurrent'] ?? fileClaude.maxConcurrent, 3)),
@@ -300,10 +346,10 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     },
     antigravity: {
       agyBin: str(flags['agy-bin']) ?? str(env.AGENTCRAFT_AGY_BIN) ?? str(fileAntigravity.agyBin) ?? 'agy',
-      leadModel: str(flags['lead-model']) ?? str(flags['agy-model']) ?? model ?? str(env.AGENTCRAFT_LEAD_MODEL) ?? str(fileAntigravity.leadModel) ?? 'gemini-3.8-flash-high',
-      workerModel: str(flags['worker-model']) ?? str(flags['agy-model']) ?? model ?? str(env.AGENTCRAFT_WORKER_MODEL) ?? str(fileAntigravity.workerModel) ?? 'gemini-3.8-flash-low',
-      effort: flags.effort !== undefined ? effort(flags.effort, 'medium') : (fileAntigravity.effort as EffortLevel | undefined),
-      leadEffort: flags['lead-effort'] !== undefined ? effort(flags['lead-effort'], 'medium') : (fileAntigravity.leadEffort as EffortLevel | undefined),
+      leadModel: str(flags['lead-model']) ?? str(flags['agy-model']) ?? model ?? str(env.AGENTCRAFT_LEAD_MODEL) ?? str(fileAntigravity.leadModel) ?? (agyPreset ? resolvePreset('antigravity', agyPreset).leadModel : undefined) ?? 'gemini-3.8-flash-high',
+      workerModel: str(flags['worker-model']) ?? str(flags['agy-model']) ?? model ?? str(env.AGENTCRAFT_WORKER_MODEL) ?? str(fileAntigravity.workerModel) ?? (agyPreset ? resolvePreset('antigravity', agyPreset).workerModel : undefined) ?? 'gemini-3.8-flash-low',
+      effort: flags.effort !== undefined ? effort(flags.effort, 'medium') : ((fileAntigravity.effort ?? (agyPreset ? resolvePreset('antigravity', agyPreset).effort : undefined)) as EffortLevel | undefined),
+      leadEffort: flags['lead-effort'] !== undefined ? effort(flags['lead-effort'], 'medium') : ((fileAntigravity.leadEffort ?? (agyPreset ? resolvePreset('antigravity', agyPreset).effort : undefined)) as EffortLevel | undefined),
       maxTurnsLead: num(flags['max-turns-lead'] ?? flags['max-turns'] ?? fileAntigravity.maxTurnsLead, 40),
       maxTurnsWorker: num(flags['max-turns-worker'] ?? flags['max-turns'] ?? fileAntigravity.maxTurnsWorker, 80),
       maxConcurrent: Math.max(1, num(flags['max-concurrent'] ?? fileAntigravity.maxConcurrent, 3)),
@@ -312,6 +358,25 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
       resumeOnStart: bool(flags.resume ?? fileAntigravity.resumeOnStart, true),
       leadReview: bool(flags['lead-review'] ?? fileAntigravity.leadReview, true),
       transientRetries: Math.max(0, num(flags['transient-retries'] ?? fileAntigravity.transientRetries, 3)),
+      preset: agyPreset,
+    },
+    opencode: {
+      ocBin: str(flags['opencode-bin']) ?? str(env.AGENTCRAFT_OC_BIN) ?? str(fileOpencode.ocBin) ?? 'opencode',
+      leadModel: str(flags['lead-model']) ?? str(flags['opencode-model']) ?? model ?? str(env.AGENTCRAFT_LEAD_MODEL) ?? str(fileOpencode.leadModel) ?? (ocPreset ? resolvePreset('opencode', ocPreset).leadModel : undefined) ?? 'opencode/muse-spark-1.3',
+      workerModel: str(flags['worker-model']) ?? str(flags['opencode-model']) ?? model ?? str(env.AGENTCRAFT_WORKER_MODEL) ?? str(fileOpencode.workerModel) ?? (ocPreset ? resolvePreset('opencode', ocPreset).workerModel : undefined) ?? 'opencode/muse-spark-1.3',
+      effort: flags.effort !== undefined ? effort(flags.effort, 'medium') : ((fileOpencode.effort ?? (ocPreset ? resolvePreset('opencode', ocPreset).effort : undefined)) as EffortLevel | undefined),
+      leadEffort: flags['lead-effort'] !== undefined ? effort(flags['lead-effort'], 'medium') : ((fileOpencode.leadEffort ?? (ocPreset ? resolvePreset('opencode', ocPreset).effort : undefined)) as EffortLevel | undefined),
+      leadAgent: str(flags['opencode-lead-agent']) ?? str(env.AGENTCRAFT_OC_LEAD_AGENT) ?? str(fileOpencode.leadAgent),
+      workerAgent: str(flags['opencode-worker-agent']) ?? str(env.AGENTCRAFT_OC_WORKER_AGENT) ?? str(fileOpencode.workerAgent),
+      maxTurnsLead: num(flags['max-turns-lead'] ?? flags['max-turns'] ?? fileOpencode.maxTurnsLead, 40),
+      maxTurnsWorker: num(flags['max-turns-worker'] ?? flags['max-turns'] ?? fileOpencode.maxTurnsWorker, 80),
+      maxConcurrent: Math.max(1, num(flags['max-concurrent'] ?? fileOpencode.maxConcurrent, 3)),
+      workers,
+      ciCommand: str(flags.ci) ?? str(fileOpencode.ciCommand),
+      resumeOnStart: bool(flags.resume ?? fileOpencode.resumeOnStart, true),
+      leadReview: bool(flags['lead-review'] ?? fileOpencode.leadReview, true),
+      transientRetries: Math.max(0, num(flags['transient-retries'] ?? fileOpencode.transientRetries, 3)),
+      preset: ocPreset,
     },
     sim: {
       speed: Math.max(0.05, num(flags.speed ?? env.AGENTCRAFT_SIM_SPEED ?? fileSim.speed, 1)),
@@ -330,7 +395,7 @@ export const HELP = `AgentCraft Foreman ${FOREMAN_VERSION}
 
 usage: npm run start -- [options]
 
-  --backend sim|claude|antigravity agent backend (default: claude, alias: agy)
+  --backend sim|claude|antigravity|opencode agent backend (default: opencode, aliases: agy, oc)
   --repo <path>[,<path>]   register local git repo(s) at start (sim: defaults to a fresh sandbox/sim-demo)
   --goal "<text>"          submit a goal right away
   --port <n>               WebSocket port (default 7878, env AGENTCRAFT_PORT)
@@ -339,7 +404,7 @@ usage: npm run start -- [options]
                            env AGENTCRAFT_USER_NAME, config.json "userName")
   --profile <name>         state profile under home (default: backend name)
   --reset                  wipe this profile's state first (sim: also recreates the demo repo)
-  --notify / --no-notify   desktop notification when a decision waits (default: on for claude, off for sim)
+  --notify / --no-notify   desktop notification when a decision waits (default: on for real backends, off for sim)
   --toast-silent           toasts without sound
   --repo-poll-ms <n>       how often repo checkouts are checked for head/dirty changes (default 10000)
   --merge-style merge|squash  approved merges: merge commit keeping the agents' commits (default),
@@ -369,6 +434,22 @@ usage: npm run start -- [options]
   --no-lead-review         skip the lead's review turn before merge decisions
   --no-resume              do not resume interrupted sessions on start
   --transient-retries <n>  auto-retries after transient network errors (default 3, 0 disables)
+  --preset heavy|medium|light
+                           weight preset for the active backend (explicit model/effort flags win)
+
+ opencode backend
+  --opencode-bin <path>    path to opencode CLI binary (default: opencode)
+  --opencode-model <m>     model for lead and workers, provider/model[#variant] (or --model)
+  --opencode-lead-agent <a> / --opencode-worker-agent <a>
+                           opencode agent for lead / workers (default: opencode default agent)
+  --lead-model <m> / --worker-model <m>
+  --effort low|medium|high|xhigh|max   (default medium; selects the #variant)
+  --max-turns <n>          turn cap per session run (default lead 40 / worker 80)
+  --workers <n|ids>        team size or comma list (default juniper,kit,wren)
+  --max-concurrent <n>     workers running at once (default 3)
+  --ci "<cmd>"             test command run after each task (default: detected, e.g. npm test)
+  --no-lead-review         skip the lead's review turn before merge decisions
+  --no-resume              do not resume interrupted sessions on start
 
  claude backend
   auth: ANTHROPIC_API_KEY, or a cloud provider (CLAUDE_CODE_USE_BEDROCK / _VERTEX / _FOUNDRY)

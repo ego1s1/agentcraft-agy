@@ -1,16 +1,17 @@
 #!/bin/sh
 # Simple backend launcher: starts the Foreman (and optionally the game) for a
-# git repo, defaulting to the antigravity backend.
+# git repo, defaulting to the opencode backend.
 #
 # Usage:
-#   ./tools/run.sh --repo <path> [--repo <path>...] [--backend antigravity|claude|sim]
-#                  [--goal "<text>"] [--port N] [--profile NAME] [--home PATH]
+#   ./tools/run.sh --repo <path> [--repo <path>...] [--backend opencode|agy|claude|sim]
+#                  [--preset heavy|medium|light] [--goal "<text>"] [--port N]
+#                  [--profile NAME] [--home PATH]
 #                  [--dev] [--no-game] [--no-foreman] [--reset] [--foreman-arg VALUE]...
 #                  [--prism [--prism-instance ID] [--prism-world NAME]]
 #
 # Examples:
 #   ./tools/run.sh --repo ~/git/mori --goal "Add a --version flag"
-#   ./tools/run.sh --repo ~/git/mori --no-game --port 7888
+#   ./tools/run.sh --repo ~/git/mori --preset heavy --no-game --port 7888
 #   ./tools/run.sh --repo ~/git/mori -- --transient-retries 5
 #   ./tools/run.sh --repo ~/git/mori --prism
 #                  # one click: Foreman + Prism instance straight into AgentCraft HQ
@@ -33,6 +34,7 @@ usage() {
 }
 
 goal=""
+preset=""
 backend_given=0
 backend_val=""
 port="${AGENTCRAFT_PORT:-7878}"
@@ -53,6 +55,8 @@ while [ "$i" -lt "$n" ]; do
     --help|-h) usage; exit 0 ;;
     --goal) goal="${2:?--goal needs a value}"; shift 2; i=$((i + 2)); continue ;;
     --goal=*) goal="${1#--goal=}"; shift; i=$((i + 1)); continue ;;
+    --preset) preset="${2:?--preset needs a value}"; shift 2; i=$((i + 2)); continue ;;
+    --preset=*) preset="${1#--preset=}"; shift; i=$((i + 1)); continue ;;
     --prism) prism=1; shift; i=$((i + 1)); continue ;;
     --prism-instance) prism_instance="${2:?--prism-instance needs a value}"; prism=1; shift 2; i=$((i + 2)); continue ;;
     --prism-instance=*) prism_instance="${1#--prism-instance=}"; prism=1; shift; i=$((i + 1)); continue ;;
@@ -76,9 +80,12 @@ while [ "$i" -lt "$n" ]; do
   arg="$1"; shift; set -- "$@" "$arg"; i=$((i + 1))
 done
 
-# --goal was consumed above; forward it as one foreman argv element.
+# --goal/--preset were consumed above; forward each as one foreman argv element.
 if [ -n "$goal" ]; then
   set -- "$@" --foreman-arg "--goal=$goal"
+fi
+if [ -n "$preset" ]; then
+  set -- "$@" --foreman-arg "--preset=$preset"
 fi
 
 if [ "$repos" -eq 0 ]; then
@@ -87,10 +94,11 @@ if [ "$repos" -eq 0 ]; then
 fi
 
 if [ "$backend_given" -eq 0 ]; then
-  backend_val="${AGENTCRAFT_BACKEND:-antigravity}"
-  [ -z "${AGENTCRAFT_BACKEND:-}" ] && set -- --backend antigravity "$@"
+  backend_val="${AGENTCRAFT_BACKEND:-opencode}"
+  [ -z "${AGENTCRAFT_BACKEND:-}" ] && set -- --backend opencode "$@"
 fi
 [ "$backend_val" = "agy" ] && backend_val="antigravity"
+[ "$backend_val" = "oc" ] && backend_val="opencode"
 
 if [ "$prism" -eq 0 ]; then
   exec node "$ROOT/tools/unix.mjs" launch "$@"

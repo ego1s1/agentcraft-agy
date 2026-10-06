@@ -725,7 +725,7 @@ export class ClaudeBackend implements Backend {
         const t = this.fm.tasks.require(job.taskId!);
         systemAppend = workerSystemPrompt(this.fm, agentId, this.fm.repos.requireWorktree(t.repoId!, t.worktree!));
       }
-      const model = role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel;
+      const model = role === 'lead' ? (this.cfg.model ?? this.cfg.leadModel) : (this.cfg.model ?? this.cfg.workerModel);
       const options: Options = {
         cwd,
         model,

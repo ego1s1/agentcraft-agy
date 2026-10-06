@@ -99,6 +99,7 @@ public final class ConnectionBanner implements HudElement {
 			case SIM -> fs.speed() != null && fs.speed() != 1.0 ? "sim ×" + trim(fs.speed()) : "sim";
 			case CLAUDE -> "claude";
 			case ANTIGRAVITY -> "antigravity";
+			case OPENCODE -> "opencode";
 			default -> fs.backend().wire();
 		};
 	}

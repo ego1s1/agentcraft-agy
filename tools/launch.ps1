@@ -23,7 +23,7 @@
 #>
 [CmdletBinding(PositionalBinding = $false)]
 param(
-    [ValidateSet('sim', 'claude', 'antigravity', 'agy')][string]$Backend,
+    [ValidateSet('sim', 'claude', 'antigravity', 'agy', 'opencode', 'oc')][string]$Backend,
     [string[]]$Repo,
     [Alias('Profile')][string]$ForemanProfile,
     # -Showcase [busy|late]: a switch with an optional positional value
@@ -84,7 +84,9 @@ if ($showcaseOn) {
     $Backend = 'sim'
     if (-not $ShowcaseAt) { $ShowcaseAt = 'busy' }
 }
-if (-not $Backend) { if ($env:AGENTCRAFT_BACKEND) { $Backend = $env:AGENTCRAFT_BACKEND } else { $Backend = 'claude' } }
+if (-not $Backend) { if ($env:AGENTCRAFT_BACKEND) { $Backend = $env:AGENTCRAFT_BACKEND } else { $Backend = 'opencode' } }
+if ($Backend -eq 'agy') { $Backend = 'antigravity' }
+if ($Backend -eq 'oc') { $Backend = 'opencode' }
 if (-not $ForemanProfile) {
     if ($showcaseOn) { if ($ShowcaseAt -eq 'late') { $ForemanProfile = 'showcase-late' } else { $ForemanProfile = 'showcase' } }
     else { $ForemanProfile = $Backend }

@@ -61,7 +61,7 @@ export type NotifyLevel = z.infer<typeof NotifyLevel>;
 export const WorktreeStatus = z.enum(['active', 'merged', 'abandoned']);
 export type WorktreeStatus = z.infer<typeof WorktreeStatus>;
 
-export const BackendName = z.enum(['sim', 'claude', 'antigravity']);
+export const BackendName = z.enum(['sim', 'claude', 'antigravity', 'opencode']);
 export type BackendName = z.infer<typeof BackendName>;
 
 export const AuthStatus = z
@@ -221,6 +221,7 @@ export const ForemanStatus = z.object({
   userName: z.string().optional().describe('the person the team works for, as the agents address them (UI: "<name> answered")'),
   effort: z.string().optional().describe('current reasoning effort level (low, medium, high, max)'),
   model: z.string().optional().describe('current model name or default'),
+  preset: z.enum(['heavy', 'medium', 'light']).optional().describe('current weight preset'),
 });
 export type ForemanStatus = z.infer<typeof ForemanStatus>;
 
@@ -404,6 +405,7 @@ export const ConfigSetMsg = z.object({
   model: z.string().optional().describe('model name'),
   leadModel: z.string().optional(),
   workerModel: z.string().optional(),
+  preset: z.enum(['heavy', 'medium', 'light']).optional().describe('weight preset (resets model/effort knobs)'),
 });
 
 export const ClientMessage = z.discriminatedUnion('type', [

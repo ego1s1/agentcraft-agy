@@ -2,11 +2,13 @@
 // primitives backends (sim / claude) use to drive agents. Transport-agnostic: the WS server feeds
 // it ClientMessages and subscribes to outbound protocol messages.
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { MessageBus } from './bus.js';
 import { loadCast, type CastMember } from './cast.js';
 import type { Config } from './config.js';
 import { FOREMAN_VERSION } from './config.js';
+import { isPreset, KNOWN_MODELS, ocModelWithEffort, resolvePreset, type PresetName } from './presets.js';
 import { consoleLogger, type Ctx, type Logger } from './context.js';
 import { DecisionError, DecisionQueue, type CreateDecisionInput } from './decisions.js';
 import { Memory, MemoryError } from './memory.js';
@@ -103,23 +105,15 @@ export class Foreman {
     this.cast = cast;
     this.log.debug(`cast from ${source}`);
     setUserName(opts.config.userName);
-    const initEffort = opts.config.backend === 'antigravity'
-      ? opts.config.antigravity?.effort
-      : opts.config.backend === 'claude'
-        ? opts.config.claude?.effort
-        : undefined;
-    const initModel = opts.config.backend === 'antigravity'
-      ? (opts.config.antigravity?.model ?? 'default')
-      : opts.config.backend === 'claude'
-        ? (opts.config.claude?.model ?? 'opus/sonnet')
-        : undefined;
+    const active = this.activeModels(opts.config);
     this.status = {
       version: FOREMAN_VERSION,
       backend: opts.config.backend,
       auth: opts.config.backend === 'sim' ? 'ok' : 'unknown',
       userName: userName(),
-      effort: initEffort,
-      model: initModel,
+      effort: active?.effort,
+      model: active?.model,
+      preset: active?.preset,
     };
     if (opts.config.backend === 'sim') this.status.message = 'Simulated team (sim backend)';
     this.initRoster();
@@ -474,6 +468,150 @@ export class Foreman {
     this.emit({ type: 'foreman.status', status: { ...this.status } });
   }
 
+  // ---- model knobs (shared by config.set and /model) ------------------------------------------
+
+  private knobsOf(cfg: Config = this.config): {
+    leadModel: string; workerModel: string; effort: string; model: string; preset?: PresetName;
+  } | undefined {
+    const b = cfg.backend;
+    const k =
+      b === 'antigravity' ? cfg.antigravity : b === 'opencode' ? cfg.opencode : b === 'claude' ? cfg.claude : undefined;
+    if (!k) return undefined;
+    return {
+      leadModel: k.leadModel,
+      workerModel: k.workerModel,
+      effort: k.effort ?? 'medium',
+      model: k.model ?? (b === 'claude' ? 'opus/sonnet' : 'default'),
+      preset: k.preset,
+    };
+  }
+
+  activeModels(cfg: Config = this.config): { effort: string; model: string; preset?: PresetName } | undefined {
+    const k = this.knobsOf(cfg);
+    if (!k) return undefined;
+    return { effort: k.effort, model: k.model, preset: k.preset };
+  }
+
+  /** Apply a weight preset: resets lead/worker model + effort to the preset values. */
+  applyPreset(preset: PresetName): { effort: string; model: string } {
+    const b = this.config.backend;
+    const k =
+      b === 'antigravity' ? this.config.antigravity : b === 'opencode' ? this.config.opencode : b === 'claude' ? this.config.claude : undefined;
+    if (!k) throw new ClientError(`presets are not supported on the ${b} backend`);
+    const p = resolvePreset(b, preset);
+    k.leadModel = p.leadModel;
+    k.workerModel = p.workerModel;
+    (k as { effort?: unknown }).effort = p.effort;
+    k.model = undefined;
+    k.preset = preset;
+    return this.refreshModelStatus(`Preset: ${preset} (${b})`);
+  }
+
+  /** Push the active knobs into status + feed; returns the summary. */
+  private refreshModelStatus(prefix = 'Effort'): { effort: string; model: string } {
+    const active = this.activeModels() ?? { effort: 'medium', model: 'default' };
+    this.setStatus({ effort: active.effort, model: active.model, preset: active.preset });
+    const preset = active.preset ? ` [${active.preset}]` : '';
+    this.bus.feed('system', `${prefix}: ${active.effort}, Model: ${active.model}${preset} (${this.config.backend})`, { agentId: 'user' });
+    return active;
+  }
+
+  /** Live model list for the active backend (`opencode models`; curated fallback). */
+  modelList(): { name: string; detail: string; live: boolean }[] {
+    const b = this.config.backend;
+    if (b === 'opencode') {
+      const bin = this.config.opencode.ocBin ?? 'opencode';
+      try {
+        const res = spawnSync(bin, ['models'], { encoding: 'utf8', timeout: 15000 });
+        const names = (res.stdout || '').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith(' ') && /^[a-z0-9_@.+-]+\/[a-z0-9_@.+-]+/i.test(l));
+        if (res.status === 0 && names.length) return names.map((name) => ({ name, detail: '', live: true }));
+      } catch {
+        /* fall through to the curated list */
+      }
+    }
+    return KNOWN_MODELS[b].map((m) => ({ ...m, live: false }));
+  }
+
+  /**
+   * `/model` text command (game chat, console, TUI -- all route through here):
+   * bare shows the status card; heavy|medium|light applies a preset; list shows
+   * the numbered pickable models; details <name|n> explains one; lead|worker <m>
+   * overrides one role; an effort word sets effort; anything else sets the model.
+   */
+  handleModelCommand(arg: string): { text: string; effort?: string; model?: string; preset?: PresetName } {
+    const b = this.config.backend;
+    const k =
+      b === 'antigravity' ? this.config.antigravity : b === 'opencode' ? this.config.opencode : b === 'claude' ? this.config.claude : undefined;
+    const knobs = this.knobsOf();
+    const card = (): { text: string; effort?: string; model?: string; preset?: PresetName } => {
+      if (!knobs) return { text: `No models on the ${b} backend` };
+      const preset = knobs.preset ? ` [${knobs.preset}]` : '';
+      const text =
+        `Backend: ${b}${preset} | Effort: ${knobs.effort}\nLead: ${knobs.leadModel}\nWorkers: ${knobs.workerModel}` +
+        (knobs.model ? `\nOverride: ${knobs.model}` : '') +
+        `\nPick: /model heavy|medium|light, /model list, /model lead|worker <name>, /model <effort|name>`;
+      return { text, effort: knobs.effort, model: knobs.model, preset: knobs.preset };
+    };
+    if (!arg) {
+      const c = card();
+      this.bus.feed('system', c.text.replace(/\n/g, ' | '), { agentId: 'user' });
+      return c;
+    }
+    const [head, ...rest] = arg.split(/\s+/);
+    const tail = rest.join(' ').trim();
+    const lower = head!.toLowerCase();
+    if (isPreset(lower)) {
+      if (!k) throw new ClientError(`presets are not supported on the ${b} backend`);
+      const active = this.applyPreset(lower);
+      return { text: `Preset: ${lower} | Effort: ${active.effort} (${b})`, ...active, preset: lower };
+    }
+    if (lower === 'list') {
+      const list = this.modelList();
+      const lines = list.map((m, i) => `${i + 1}. ${m.name}${m.detail ? ` — ${m.detail}` : ''}`);
+      return { text: `Models (${b}${list[0]?.live ? ', live' : ''}):\n${lines.join('\n')}\nPick: /model <n|name>` };
+    }
+    if (lower === 'details' || lower === 'detail' || lower === 'info') {
+      const list = this.modelList();
+      const want = tail.toLowerCase();
+      const byNum = /^\d+$/.test(want) ? list[Number(want) - 1] : undefined;
+      const found = byNum ?? list.find((m) => m.name.toLowerCase() === want) ?? list.find((m) => m.name.toLowerCase().includes(want));
+      if (!found || !want) return { text: `Usage: /model details <n|name> (see /model list)` };
+      const inPreset = (['heavy', 'medium', 'light'] as PresetName[]).filter((p) => {
+        const pr = resolvePreset(b, p);
+        return pr.leadModel === found.name || pr.workerModel === found.name;
+      });
+      const { effort: eff } = this.activeModels() ?? { effort: 'medium' };
+      const runsAs = b === 'opencode' ? `runs as ${ocModelWithEffort(found.name, eff as Parameters<typeof ocModelWithEffort>[1])} with effort ${eff}` : `effort ${eff}`;
+      return { text: `${found.name}${found.detail ? ` — ${found.detail}` : ''}\n${inPreset.length ? `Preset: ${inPreset.join(', ')}` : 'Not in a preset'} | ${runsAs}` };
+    }
+    if ((lower === 'lead' || lower === 'worker') && tail) {
+      if (!k) throw new ClientError(`models are not supported on the ${b} backend`);
+      if (lower === 'lead') k.leadModel = tail;
+      else k.workerModel = tail;
+      k.model = undefined;
+      k.preset = undefined;
+      const active = this.refreshModelStatus('Effort');
+      return { text: `${lower === 'lead' ? 'Lead' : 'Workers'}: ${tail} (${b})`, ...active };
+    }
+    if (['low', 'med', 'medium', 'high', 'xhigh', 'max'].includes(lower)) {
+      if (!k) throw new ClientError(`effort is not supported on the ${b} backend`);
+      const eff = lower === 'med' ? 'medium' : lower;
+      (k as { effort?: unknown }).effort = eff;
+      k.preset = undefined;
+      const active = this.refreshModelStatus('Effort');
+      return { text: `Effort: ${active.effort} | Model: ${active.model} (${b})`, ...active };
+    }
+    // Anything else (or a list number) sets the shared model override.
+    if (!k) throw new ClientError(`models are not supported on the ${b} backend`);
+    const list = /^\d+$/.test(arg) ? this.modelList() : undefined;
+    const picked = list ? list[Number(arg) - 1]?.name : undefined;
+    if (list && !picked) return { text: `No model #${arg} (see /model list)` };
+    k.model = picked ?? arg;
+    k.preset = undefined;
+    const active = this.refreshModelStatus('Effort');
+    return { text: `Effort: ${active.effort} | Model: ${active.model} (${b})`, ...active };
+  }
+
   // ---- snapshot -----------------------------------------------------------------------------
 
   snapshot(): Outbound {
@@ -524,64 +662,39 @@ export class Foreman {
       case 'goal.submit':
         return { goalId: (await this.submitGoal(msg.text, msg.repoId)).id };
       case 'config.set': {
+        const b = this.config.backend;
+        const k =
+          b === 'antigravity' ? this.config.antigravity : b === 'opencode' ? this.config.opencode : b === 'claude' ? this.config.claude : undefined;
+        if (msg.preset) {
+          if (!isPreset(msg.preset)) throw new ClientError(`unknown preset "${msg.preset}" (use heavy, medium, light)`);
+          const active = this.applyPreset(msg.preset);
+          return { ok: true, ...active, preset: msg.preset, backend: b };
+        }
+        if (!k) throw new ClientError(`config.set is not supported on the ${b} backend`);
         const effortVal = msg.effort ? (msg.effort === 'med' ? 'medium' : msg.effort) : undefined;
         if (effortVal) {
-          if (this.config.antigravity) this.config.antigravity.effort = effortVal as any;
-          if (this.config.claude) this.config.claude.effort = effortVal as any;
+          (k as { effort?: unknown }).effort = effortVal;
+          k.preset = undefined;
         }
         if (msg.model) {
-          if (this.config.antigravity) this.config.antigravity.model = msg.model;
-          if (this.config.claude) this.config.claude.model = msg.model;
+          k.model = msg.model;
+          k.preset = undefined;
         }
         if (msg.leadModel) {
-          if (this.config.antigravity) this.config.antigravity.leadModel = msg.leadModel;
-          if (this.config.claude) this.config.claude.leadModel = msg.leadModel;
+          k.leadModel = msg.leadModel;
+          k.preset = undefined;
         }
         if (msg.workerModel) {
-          if (this.config.antigravity) this.config.antigravity.workerModel = msg.workerModel;
-          if (this.config.claude) this.config.claude.workerModel = msg.workerModel;
+          k.workerModel = msg.workerModel;
+          k.preset = undefined;
         }
-        const activeEffort = this.config.backend === 'antigravity'
-          ? (this.config.antigravity?.effort ?? 'medium')
-          : (this.config.claude?.effort ?? 'medium');
-        const activeModel = this.config.backend === 'antigravity'
-          ? (this.config.antigravity?.model ?? 'default')
-          : (this.config.claude?.model ?? 'opus/sonnet');
-        this.setStatus({ effort: activeEffort, model: activeModel });
-        this.bus.feed('system', `Effort: ${activeEffort}, Model: ${activeModel} (${this.config.backend})`, { agentId: 'user' });
-        return { ok: true, effort: activeEffort, model: activeModel, backend: this.config.backend };
+        const active = this.refreshModelStatus();
+        return { ok: true, ...active, backend: b };
       }
       case 'user.message': {
         const trimmed = msg.text.trim();
         if (trimmed === '/model' || trimmed.startsWith('/model ')) {
-          const arg = trimmed.slice('/model'.length).trim();
-          let eff: string | undefined;
-          let mod: string | undefined;
-          if (arg) {
-            if (['low', 'med', 'medium', 'high', 'xhigh', 'max'].includes(arg.toLowerCase())) {
-              eff = arg.toLowerCase() === 'med' ? 'medium' : arg.toLowerCase();
-            } else {
-              mod = arg;
-            }
-            if (eff) {
-              if (this.config.antigravity) this.config.antigravity.effort = eff as any;
-              if (this.config.claude) this.config.claude.effort = eff as any;
-            }
-            if (mod) {
-              if (this.config.antigravity) this.config.antigravity.model = mod;
-              if (this.config.claude) this.config.claude.model = mod;
-            }
-          }
-          const activeEffort = this.config.backend === 'antigravity'
-            ? (this.config.antigravity?.effort ?? 'medium')
-            : (this.config.claude?.effort ?? 'medium');
-          const activeModel = this.config.backend === 'antigravity'
-            ? (this.config.antigravity?.model ?? 'default')
-            : (this.config.claude?.model ?? 'opus/sonnet');
-          this.setStatus({ effort: activeEffort, model: activeModel });
-          const resp = `Effort: ${activeEffort} | Model: ${activeModel} (${this.config.backend})`;
-          this.bus.feed('system', resp, { agentId: 'user' });
-          return { ok: true, text: resp, effort: activeEffort, model: activeModel };
+          return { ok: true, ...this.handleModelCommand(trimmed.slice('/model'.length).trim()) };
         }
         const { to, text } = this.routeUserMessage(msg.to, msg.text);
         this.bus.send('user', to, text);

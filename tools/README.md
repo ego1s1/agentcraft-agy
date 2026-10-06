@@ -13,10 +13,11 @@ node tools/unix.mjs launch --repo /path/to/repo --use-claude-login
 node tools/unix.mjs stop                           # save/quit game, stop Foreman
 ```
 
-Short form for the common case (defaults to the antigravity backend):
+Short form for the common case (defaults to the opencode backend):
 
 ```sh
 ./tools/run.sh --repo /path/to/repo --goal "Add a --version flag"
+./tools/run.sh --repo /path/to/repo --backend agy --preset heavy   # backend: opencode|agy|claude|sim
 ./tools/run.sh --repo /path/to/repo --no-game      # Foreman only, no Minecraft
 ./tools/run.sh --repo /path/to/repo -- --transient-retries 5   # extra Foreman flags after --
 ```
@@ -93,7 +94,7 @@ If the game of this checkout is already running it is reused (one client per che
 
 | parameter | default | |
 | --- | --- | --- |
-| `-Backend sim\|claude` | `claude` (`AGENTCRAFT_BACKEND`) | `-Showcase` implies `sim` |
+| `-Backend sim\|claude\|antigravity\|opencode` | `opencode` (`AGENTCRAFT_BACKEND`) | `-Showcase` implies `sim` |
 | `-Repo <path>[,<path>]` | | registered at start, or sent as `repo.add` to a running Foreman |
 | `-Profile <name>` | backend name; `showcase` / `showcase-late` | state lives in `<home>/<profile>` |
 | `-Showcase [busy\|late]` | | hold a static scripted state (QA screenshots); always a fresh (`--reset`) profile |
@@ -103,7 +104,7 @@ If the game of this checkout is already running it is reused (one client per che
 | `-Reset` | | wipe the profile before starting (new Foreman only) |
 | `-Speed x`, `-Autostart`, `-Goal "..."` | | sim speed / start the scripted goal / submit a goal at start |
 | `-ForemanArgs @('--workers','kit,wren')` | | extra Foreman flags (`npm run start -- --help`) |
-| `-Notify` / `-NoNotify` | Foreman default (on for claude) | Windows toasts |
+| `-Notify` / `-NoNotify` | Foreman default (on for real backends) | Windows toasts |
 | `-NoGame`, `-NoForeman`, `-NoWait` | | only the Foreman / only the game / don't wait for the world |
 | `-GradleHome <dir>` | `GRADLE_USER_HOME` or `<main checkout>\.gradle-home` | |
 | `-TimeoutSec N` | 600 | how long to wait for the world |

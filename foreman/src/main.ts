@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ClaudeBackend } from './agents/claude/index.js';
 import { AntigravityBackend } from './agents/antigravity/index.js';
+import { OpencodeBackend } from './agents/opencode/index.js';
 import { SimBackend } from './agents/sim/index.js';
 import { DEFAULT_SIM_GOAL } from './agents/sim/scenario.js';
 import { FOREMAN_VERSION, HELP, loadConfig, type Config } from './config.js';
@@ -67,7 +68,9 @@ export async function main(argv: string[]): Promise<void> {
       ? new SimBackend(foreman, cfg.sim)
       : cfg.backend === 'antigravity'
         ? new AntigravityBackend(foreman, cfg.antigravity)
-        : new ClaudeBackend(foreman, cfg.claude);
+        : cfg.backend === 'opencode'
+          ? new OpencodeBackend(foreman, cfg.opencode)
+          : new ClaudeBackend(foreman, cfg.claude);
   const server = new ForemanServer(foreman, { host: cfg.host, port: cfg.port, allowBrowserOrigins: cfg.allowBrowserOrigins, validateOutbound: cfg.debug, log });
 
   try {
