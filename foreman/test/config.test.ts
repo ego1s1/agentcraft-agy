@@ -42,6 +42,20 @@ describe('loadConfig argument checking', () => {
     }
   });
 
+  it('accepts the documented antigravity flags and agy alias', () => {
+    const cfg = load(['--backend', 'antigravity', '--agy-bin', '/usr/local/bin/agy', '--agy-model', 'gemini-3.8-flash-low', '--effort', 'low', '--workers', 'kit,lex']);
+    expect(cfg.backend).toBe('antigravity');
+    expect(cfg.antigravity.agyBin).toBe('/usr/local/bin/agy');
+    expect(cfg.antigravity.leadModel).toBe('gemini-3.8-flash-low');
+    expect(cfg.antigravity.workerModel).toBe('gemini-3.8-flash-low');
+    expect(cfg.antigravity.effort).toBe('low');
+    expect(cfg.antigravity.workers).toEqual(['kit', 'lex']);
+    expect(cfg.notify).toBe(true);
+
+    const cfgAgy = load(['--backend', 'agy']);
+    expect(cfgAgy.backend).toBe('antigravity');
+  });
+
   it('accepts the sim flags launch.ps1 passes', () => {
     const cfg = load(['--backend', 'sim', '--profile', 'x', '--port', '41000', '--reset', '--showcase', 'late', '--speed', '2', '--autostart']);
     expect(cfg.sim.showcaseAt).toBe('showcase-late');

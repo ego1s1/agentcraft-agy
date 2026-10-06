@@ -41,35 +41,46 @@ export function relPath(p: string, cwd?: string): string {
 
 export function toolActivity(tool: string, input: Record<string, unknown>, cwd?: string): Activity {
   const name = tool.startsWith('mcp__') ? tool.split('__').pop()! : tool;
-  const file = str(input.file_path) ?? str(input.path) ?? str(input.notebook_path);
+  const file = str(input.file_path) ?? str(input.path) ?? str(input.notebook_path) ?? str(input.target_file) ?? str(input.absolute_path) ?? str(input.SearchPath);
   const rel = file ? relPath(file, cwd) : undefined;
   switch (name) {
     case 'Read':
     case 'NotebookRead':
+    case 'view_file':
       return { state: 'reading', station: 'library', activity: `reading ${short(rel ?? 'files')}`, label: `Read ${rel ?? ''}`.trim() };
-    case 'Grep': {
-      const pat = str(input.pattern) ?? '';
+    case 'Grep':
+    case 'grep_search': {
+      const pat = str(input.pattern) ?? str(input.Query) ?? str(input.query) ?? '';
       return { state: 'reading', station: 'library', activity: `searching "${pat.slice(0, 24)}"`, label: `Grep "${pat}"${rel ? ` in ${rel}` : ''}` };
     }
     case 'Glob':
-    case 'LS': {
-      const pat = str(input.pattern) ?? rel ?? '.';
+    case 'LS':
+    case 'find_by_name':
+    case 'list_dir': {
+      const pat = str(input.pattern) ?? str(input.Pattern) ?? rel ?? str(input.DirectoryPath) ?? str(input.SearchDirectory) ?? '.';
       return { state: 'reading', station: 'library', activity: `browsing ${pat.slice(0, 30)}`, label: `${name} ${pat}` };
     }
     case 'Edit':
     case 'MultiEdit':
     case 'NotebookEdit':
+    case 'replace_file_content':
+    case 'multi_replace_file_content':
+    case 'sed_file':
       return { state: 'editing', station: 'desk', activity: `editing ${short(rel ?? 'files')}`, label: `Edit ${rel ?? ''}`.trim() };
     case 'Write':
+    case 'write_to_file':
       return { state: 'editing', station: 'desk', activity: `writing ${short(rel ?? 'a file')}`, label: `Write ${rel ?? ''}`.trim() };
     case 'Bash':
-    case 'PowerShell': {
-      const cmd = (str(input.command) ?? '').replace(/\s+/g, ' ').trim();
+    case 'PowerShell':
+    case 'run_command': {
+      const cmd = (str(input.command) ?? str(input.CommandLine) ?? '').replace(/\s+/g, ' ').trim();
       if (TEST_CMD_RE.test(cmd)) return { state: 'testing', station: 'testbench', activity: `testing: ${cmd.slice(0, 32)}`, label: `$ ${cmd}` };
       return { state: 'running', station: 'terminal', activity: `$ ${cmd.slice(0, 40)}`, label: `$ ${cmd}` };
     }
     case 'WebFetch':
     case 'WebSearch':
+    case 'read_url_content':
+    case 'search_web':
       return { state: 'reading', station: 'library', activity: name === 'WebFetch' ? 'reading the web' : 'searching the web', label: `${name} ${str(input.url) ?? str(input.query) ?? ''}`.trim() };
     case 'TodoWrite':
       return { state: 'thinking', station: 'desk', activity: 'planning steps', label: 'TodoWrite' };

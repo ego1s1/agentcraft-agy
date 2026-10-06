@@ -31,6 +31,8 @@ export interface ClaudeConfig {
   resumeOnStart: boolean;
   /** lead reviews each finished task before the merge decision reaches the user */
   leadReview: boolean;
+  /** shared model override for lead and workers (set via /model or config.set) */
+  model?: string;
   /**
    * Use the local `claude` CLI's claude.ai login instead of an API key / cloud provider. Personal use
    * only: Anthropic does not allow third-party tools to offer claude.ai login (see agents/claude/auth.ts).
@@ -38,6 +40,31 @@ export interface ClaudeConfig {
   useClaudeLogin: boolean;
   /** command prefixes the lead runs without asking, e.g. `bd show` */
   leadReadCommands: string[];
+}
+
+
+export interface AntigravityConfig {
+  agyBin: string;
+  leadModel: string;
+  workerModel: string;
+  /** shared model override for lead and workers (set via /model or config.set) */
+  model?: string;
+  effort?: EffortLevel;
+  leadEffort?: EffortLevel;
+  maxTurnsLead: number;
+  maxTurnsWorker: number;
+  /** max workers running a turn at the same time */
+  maxConcurrent: number;
+  /** worker ids in the team (subset of the cast) */
+  workers: string[];
+  /** test command for CI after a worker finishes (default: detect, e.g. `npm test`) */
+  ciCommand?: string;
+  /** resume interrupted sessions on Foreman start */
+  resumeOnStart: boolean;
+  /** lead reviews each finished task before the merge decision reaches the user */
+  leadReview: boolean;
+  /** automatic retries (with backoff) when a turn dies on a transient network error (default 3, 0 disables) */
+  transientRetries: number;
 }
 
 export type ShowcaseCheckpoint = 'showcase' | 'showcase-late';
@@ -82,6 +109,7 @@ export interface Config {
   /** sign approved merge commits when the repo's own git config says commit.gpgsign=true */
   signMerges: boolean;
   claude: ClaudeConfig;
+  antigravity: AntigravityConfig;
   sim: SimConfig;
 }
 
@@ -180,8 +208,8 @@ function effort(v: unknown, d: EffortLevel): EffortLevel {
 export const KNOWN_FLAGS = new Set([
   'home', 'backend', 'profile', 'user-name', 'use-claude-login', 'repo', 'workers', 'model', 'port', 'goal', 'autostart', 'reset', 'notify',
   'toast-silent', 'debug', 'quiet', 'allow-browser-origins', 'repo-poll-ms', 'merge-style', 'sign-merges',
-  'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
-  'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'speed', 'seed', 'showcase', 'auto-answer',
+  'agy-bin', 'agy-model', 'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
+  'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'transient-retries', 'speed', 'seed', 'showcase', 'auto-answer',
   'ambient', 'lead-read-commands',
 ]);
 
@@ -204,11 +232,15 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
   const home = path.resolve(str(flags.home) ?? env.AGENTCRAFT_HOME ?? path.join(os.homedir(), '.agentcraft'));
   const file = readJson<Record<string, unknown>>(path.join(home, 'config.json')) ?? {};
   const fileClaude = (file.claude ?? {}) as Record<string, unknown>;
+  const fileAntigravity = (file.antigravity ?? {}) as Record<string, unknown>;
   const fileSim = (file.sim ?? {}) as Record<string, unknown>;
   const pick = (k: string, envKey?: string): unknown => flags[k] ?? (envKey ? env[envKey] : undefined) ?? file[k];
 
-  const backendRaw = String(pick('backend', 'AGENTCRAFT_BACKEND') ?? 'claude');
-  if (backendRaw !== 'sim' && backendRaw !== 'claude') throw new Error(`unknown backend "${backendRaw}" (use sim or claude)`);
+  let backendRaw = String(pick('backend', 'AGENTCRAFT_BACKEND') ?? 'claude');
+  if (backendRaw === 'agy') backendRaw = 'antigravity';
+  if (backendRaw !== 'sim' && backendRaw !== 'claude' && backendRaw !== 'antigravity') {
+    throw new Error(`unknown backend "${backendRaw}" (use sim, claude or antigravity)`);
+  }
   const backend = backendRaw as BackendName;
   const profile = str(pick('profile', 'AGENTCRAFT_PROFILE')) ?? backend;
   if (!/^[a-zA-Z0-9_-]+$/.test(profile)) throw new Error(`bad profile name "${profile}"`);
@@ -240,7 +272,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     goal: str(flags.goal),
     autostart: bool(flags.autostart, false) || !!str(flags.goal),
     reset: bool(flags.reset, false),
-    notify: bool(pick('notify', 'AGENTCRAFT_NOTIFY'), backend === 'claude'),
+    notify: bool(pick('notify', 'AGENTCRAFT_NOTIFY'), backend === 'claude' || backend === 'antigravity'),
     toastSilent: bool(pick('toast-silent', 'AGENTCRAFT_TOAST_SILENT'), false),
     debug: bool(pick('debug', 'AGENTCRAFT_DEBUG'), false),
     quiet: bool(flags.quiet, false),
@@ -249,7 +281,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     repoPollMs: Math.max(500, num(pick('repo-poll-ms'), 10_000)),
     mergeStyle: mergeStyle(pick('merge-style', 'AGENTCRAFT_MERGE_STYLE')),
     // the sim answers merges unattended (screenshot QA, --auto-answer): never sign there
-    signMerges: bool(pick('sign-merges', 'AGENTCRAFT_SIGN_MERGES'), backend === 'claude'),
+    signMerges: bool(pick('sign-merges', 'AGENTCRAFT_SIGN_MERGES'), backend === 'claude' || backend === 'antigravity'),
     claude: {
       leadModel: str(flags['lead-model']) ?? model ?? str(env.AGENTCRAFT_LEAD_MODEL) ?? str(fileClaude.leadModel) ?? 'opus',
       workerModel: str(flags['worker-model']) ?? model ?? str(env.AGENTCRAFT_WORKER_MODEL) ?? str(fileClaude.workerModel) ?? 'sonnet',
@@ -265,6 +297,21 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
       leadReview: bool(flags['lead-review'] ?? fileClaude.leadReview, true),
       useClaudeLogin: bool(flags['use-claude-login'] ?? env.AGENTCRAFT_USE_CLAUDE_LOGIN ?? fileClaude.useClaudeLogin, false),
       leadReadCommands: readCommands(flags['lead-read-commands'] ?? env.AGENTCRAFT_LEAD_READ_COMMANDS ?? fileClaude.leadReadCommands),
+    },
+    antigravity: {
+      agyBin: str(flags['agy-bin']) ?? str(env.AGENTCRAFT_AGY_BIN) ?? str(fileAntigravity.agyBin) ?? 'agy',
+      leadModel: str(flags['lead-model']) ?? str(flags['agy-model']) ?? model ?? str(env.AGENTCRAFT_LEAD_MODEL) ?? str(fileAntigravity.leadModel) ?? 'gemini-3.8-flash-high',
+      workerModel: str(flags['worker-model']) ?? str(flags['agy-model']) ?? model ?? str(env.AGENTCRAFT_WORKER_MODEL) ?? str(fileAntigravity.workerModel) ?? 'gemini-3.8-flash-low',
+      effort: flags.effort !== undefined ? effort(flags.effort, 'medium') : (fileAntigravity.effort as EffortLevel | undefined),
+      leadEffort: flags['lead-effort'] !== undefined ? effort(flags['lead-effort'], 'medium') : (fileAntigravity.leadEffort as EffortLevel | undefined),
+      maxTurnsLead: num(flags['max-turns-lead'] ?? flags['max-turns'] ?? fileAntigravity.maxTurnsLead, 40),
+      maxTurnsWorker: num(flags['max-turns-worker'] ?? flags['max-turns'] ?? fileAntigravity.maxTurnsWorker, 80),
+      maxConcurrent: Math.max(1, num(flags['max-concurrent'] ?? fileAntigravity.maxConcurrent, 3)),
+      workers,
+      ciCommand: str(flags.ci) ?? str(fileAntigravity.ciCommand),
+      resumeOnStart: bool(flags.resume ?? fileAntigravity.resumeOnStart, true),
+      leadReview: bool(flags['lead-review'] ?? fileAntigravity.leadReview, true),
+      transientRetries: Math.max(0, num(flags['transient-retries'] ?? fileAntigravity.transientRetries, 3)),
     },
     sim: {
       speed: Math.max(0.05, num(flags.speed ?? env.AGENTCRAFT_SIM_SPEED ?? fileSim.speed, 1)),
@@ -283,7 +330,7 @@ export const HELP = `AgentCraft Foreman ${FOREMAN_VERSION}
 
 usage: npm run start -- [options]
 
-  --backend sim|claude     agent backend (default: claude)
+  --backend sim|claude|antigravity agent backend (default: claude, alias: agy)
   --repo <path>[,<path>]   register local git repo(s) at start (sim: defaults to a fresh sandbox/sim-demo)
   --goal "<text>"          submit a goal right away
   --port <n>               WebSocket port (default 7878, env AGENTCRAFT_PORT)
@@ -309,6 +356,19 @@ usage: npm run start -- [options]
   --showcase late          hold the later state instead (blocked, error, done and running agents)
   --auto-answer            answer the scenario's own decisions (unattended runs)
   --no-ambient             no idle chatter while waiting on you
+
+ antigravity backend
+  --agy-bin <path>         path to agy CLI binary (default: agy)
+  --agy-model <m>          model for lead and workers (or --model)
+  --lead-model <m> / --worker-model <m>
+  --effort low|medium|high|xhigh|max   (default medium)
+  --max-turns <n>          turn cap per session run (default lead 40 / worker 80)
+  --workers <n|ids>        team size or comma list (default juniper,kit,wren)
+  --max-concurrent <n>     workers running at once (default 3)
+  --ci "<cmd>"             test command run after each task (default: detected, e.g. npm test)
+  --no-lead-review         skip the lead's review turn before merge decisions
+  --no-resume              do not resume interrupted sessions on start
+  --transient-retries <n>  auto-retries after transient network errors (default 3, 0 disables)
 
  claude backend
   auth: ANTHROPIC_API_KEY, or a cloud provider (CLAUDE_CODE_USE_BEDROCK / _VERTEX / _FOUNDRY)

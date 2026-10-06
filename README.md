@@ -176,6 +176,29 @@ Minecraft: Java Edition.
   Vertex AI (`CLAUDE_CODE_USE_VERTEX=1`) or Microsoft Foundry (`CLAUDE_CODE_USE_FOUNDRY=1`), with that
   provider's usual credentials.
 
+**Or run the agents on Antigravity instead of Claude.** Install the `agy` CLI (it ships with
+[Google Antigravity](https://antigravity.google); make sure `agy --version` works in a terminal —
+the first `agy` run signs you in with your Google account, the Foreman just shells out to it).
+Then use `--backend antigravity` (short: `agy`) wherever the examples below say `claude`:
+
+```powershell
+tools\launch.ps1 -Backend antigravity -Repo C:\path\to\your\repo
+```
+
+```sh
+node tools/unix.mjs launch --backend antigravity --repo /path/to/your/repo
+./tools/run.sh --repo /path/to/your/repo --goal "Add a --version flag"   # antigravity by default
+./tools/run.sh --repo /path/to/your/repo --goal "..." --prism            # + Prism, one click
+```
+
+Useful Foreman flags for this backend: `--agy-bin <path>` (when `agy` is not on `PATH`),
+`--agy-model <m>` (or `--lead-model` / `--worker-model` separately; defaults: lead
+`gemini-3.8-flash-high`, workers `gemini-3.8-flash-low`), `--effort low|medium|high|max`,
+`--max-turns <n>`, `--workers <n|ids>`, `--max-concurrent <n>`, `--ci "<cmd>"`,
+`--transient-retries <n>` (automatic retries after network blips, default 3). If the CLI is
+missing the top banner shows auth `failed`. In game chat, `/model` shows or changes the
+model and reasoning effort.
+
 Then:
 
 ```powershell

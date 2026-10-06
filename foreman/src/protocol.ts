@@ -61,7 +61,7 @@ export type NotifyLevel = z.infer<typeof NotifyLevel>;
 export const WorktreeStatus = z.enum(['active', 'merged', 'abandoned']);
 export type WorktreeStatus = z.infer<typeof WorktreeStatus>;
 
-export const BackendName = z.enum(['sim', 'claude']);
+export const BackendName = z.enum(['sim', 'claude', 'antigravity']);
 export type BackendName = z.infer<typeof BackendName>;
 
 export const AuthStatus = z
@@ -219,6 +219,8 @@ export const ForemanStatus = z.object({
   showcase: z.boolean().optional().describe('sim: holding a static showcase state (`--showcase` or `--showcase late`)'),
   costUsd: z.number().optional().describe('claude: estimated spend of this profile (sum over all sessions, survives restarts)'),
   userName: z.string().optional().describe('the person the team works for, as the agents address them (UI: "<name> answered")'),
+  effort: z.string().optional().describe('current reasoning effort level (low, medium, high, max)'),
+  model: z.string().optional().describe('current model name or default'),
 });
 export type ForemanStatus = z.infer<typeof ForemanStatus>;
 
@@ -396,6 +398,13 @@ export const DiffRequestMsg = z.object({
   worktree: Id.describe('worktree id (e.g. "kit-t2"); an agent id resolves to that agent\'s current worktree'),
 });
 export const RepoAddMsg = z.object({ ...envelope('repo.add'), path: z.string().min(1) });
+export const ConfigSetMsg = z.object({
+  ...envelope('config.set'),
+  effort: z.enum(['low', 'med', 'medium', 'high', 'xhigh', 'max']).optional().describe('reasoning effort'),
+  model: z.string().optional().describe('model name'),
+  leadModel: z.string().optional(),
+  workerModel: z.string().optional(),
+});
 
 export const ClientMessage = z.discriminatedUnion('type', [
   HelloMsg,
@@ -406,6 +415,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   AgentActionMsg,
   DiffRequestMsg,
   RepoAddMsg,
+  ConfigSetMsg,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 

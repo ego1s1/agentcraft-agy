@@ -14,6 +14,8 @@ import dev.agentcraft.client.permissions.PermissionsFeature;
 import dev.agentcraft.client.taskwall.TaskWallFeature;
 import dev.agentcraft.client.world.AnchorsDev;
 import dev.agentcraft.client.world.ItemsDev;
+import dev.agentcraft.client.command.ModelCommand;
+import dev.agentcraft.client.command.TaskCommand;
 
 /**
  * The one place that wires every client feature. Each feature lives in its own package with an
@@ -40,6 +42,8 @@ public final class ClientFeatures {
 		DiffFeature.init();
 		LibraryFeature.init();
 		PermissionsFeature.init();
+		ModelCommand.init();
+		TaskCommand.init();
 		AgentCraft.LOGGER.info("AgentCraft client features initialised");
 	}
 }

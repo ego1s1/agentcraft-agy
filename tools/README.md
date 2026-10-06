@@ -13,6 +13,29 @@ node tools/unix.mjs launch --repo /path/to/repo --use-claude-login
 node tools/unix.mjs stop                           # save/quit game, stop Foreman
 ```
 
+Short form for the common case (defaults to the antigravity backend):
+
+```sh
+./tools/run.sh --repo /path/to/repo --goal "Add a --version flag"
+./tools/run.sh --repo /path/to/repo --no-game      # Foreman only, no Minecraft
+./tools/run.sh --repo /path/to/repo -- --transient-retries 5   # extra Foreman flags after --
+```
+
+`--goal "<text>"` submits a goal at startup; `--repo` is repeatable. The backend
+retries transient network errors automatically (`--transient-retries <n>`,
+default 3, `0` disables); use `/task <id> retry` in game chat (or the Task Wall
+Retry button) once the top banner shows the Foreman link is back.
+
+One-click Prism start: `--prism` starts only the Foreman, then launches the
+Prism instance straight into the world (defaults: the only instance, else
+`--prism-instance ID`; `--prism-world NAME`, default `AgentCraft HQ` when that
+world exists in the instance). The game inherits `AGENTCRAFT_PORT/HOME/PROFILE`
+so the mod links to this Foreman:
+
+```sh
+./tools/run.sh --repo /path/to/repo --goal "Add a --version flag" --prism
+```
+
 The launcher installs npm dependencies on first use, runs the Fabric development client,
 and waits for the studio world. It reuses a running Foreman or game from the same profile.
 Use `--dev` for mute/no focus/no notifications; `--no-game` or `--no-foreman` to run just

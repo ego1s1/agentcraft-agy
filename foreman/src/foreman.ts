@@ -103,7 +103,24 @@ export class Foreman {
     this.cast = cast;
     this.log.debug(`cast from ${source}`);
     setUserName(opts.config.userName);
-    this.status = { version: FOREMAN_VERSION, backend: opts.config.backend, auth: opts.config.backend === 'sim' ? 'ok' : 'unknown', userName: userName() };
+    const initEffort = opts.config.backend === 'antigravity'
+      ? opts.config.antigravity?.effort
+      : opts.config.backend === 'claude'
+        ? opts.config.claude?.effort
+        : undefined;
+    const initModel = opts.config.backend === 'antigravity'
+      ? (opts.config.antigravity?.model ?? 'default')
+      : opts.config.backend === 'claude'
+        ? (opts.config.claude?.model ?? 'opus/sonnet')
+        : undefined;
+    this.status = {
+      version: FOREMAN_VERSION,
+      backend: opts.config.backend,
+      auth: opts.config.backend === 'sim' ? 'ok' : 'unknown',
+      userName: userName(),
+      effort: initEffort,
+      model: initModel,
+    };
     if (opts.config.backend === 'sim') this.status.message = 'Simulated team (sim backend)';
     this.initRoster();
     this.decisions.onCreated((d) => this.onDecisionCreated(d));
@@ -506,7 +523,66 @@ export class Foreman {
         return undefined;
       case 'goal.submit':
         return { goalId: (await this.submitGoal(msg.text, msg.repoId)).id };
+      case 'config.set': {
+        const effortVal = msg.effort ? (msg.effort === 'med' ? 'medium' : msg.effort) : undefined;
+        if (effortVal) {
+          if (this.config.antigravity) this.config.antigravity.effort = effortVal as any;
+          if (this.config.claude) this.config.claude.effort = effortVal as any;
+        }
+        if (msg.model) {
+          if (this.config.antigravity) this.config.antigravity.model = msg.model;
+          if (this.config.claude) this.config.claude.model = msg.model;
+        }
+        if (msg.leadModel) {
+          if (this.config.antigravity) this.config.antigravity.leadModel = msg.leadModel;
+          if (this.config.claude) this.config.claude.leadModel = msg.leadModel;
+        }
+        if (msg.workerModel) {
+          if (this.config.antigravity) this.config.antigravity.workerModel = msg.workerModel;
+          if (this.config.claude) this.config.claude.workerModel = msg.workerModel;
+        }
+        const activeEffort = this.config.backend === 'antigravity'
+          ? (this.config.antigravity?.effort ?? 'medium')
+          : (this.config.claude?.effort ?? 'medium');
+        const activeModel = this.config.backend === 'antigravity'
+          ? (this.config.antigravity?.model ?? 'default')
+          : (this.config.claude?.model ?? 'opus/sonnet');
+        this.setStatus({ effort: activeEffort, model: activeModel });
+        this.bus.feed('system', `Effort: ${activeEffort}, Model: ${activeModel} (${this.config.backend})`, { agentId: 'user' });
+        return { ok: true, effort: activeEffort, model: activeModel, backend: this.config.backend };
+      }
       case 'user.message': {
+        const trimmed = msg.text.trim();
+        if (trimmed === '/model' || trimmed.startsWith('/model ')) {
+          const arg = trimmed.slice('/model'.length).trim();
+          let eff: string | undefined;
+          let mod: string | undefined;
+          if (arg) {
+            if (['low', 'med', 'medium', 'high', 'xhigh', 'max'].includes(arg.toLowerCase())) {
+              eff = arg.toLowerCase() === 'med' ? 'medium' : arg.toLowerCase();
+            } else {
+              mod = arg;
+            }
+            if (eff) {
+              if (this.config.antigravity) this.config.antigravity.effort = eff as any;
+              if (this.config.claude) this.config.claude.effort = eff as any;
+            }
+            if (mod) {
+              if (this.config.antigravity) this.config.antigravity.model = mod;
+              if (this.config.claude) this.config.claude.model = mod;
+            }
+          }
+          const activeEffort = this.config.backend === 'antigravity'
+            ? (this.config.antigravity?.effort ?? 'medium')
+            : (this.config.claude?.effort ?? 'medium');
+          const activeModel = this.config.backend === 'antigravity'
+            ? (this.config.antigravity?.model ?? 'default')
+            : (this.config.claude?.model ?? 'opus/sonnet');
+          this.setStatus({ effort: activeEffort, model: activeModel });
+          const resp = `Effort: ${activeEffort} | Model: ${activeModel} (${this.config.backend})`;
+          this.bus.feed('system', resp, { agentId: 'user' });
+          return { ok: true, text: resp, effort: activeEffort, model: activeModel };
+        }
         const { to, text } = this.routeUserMessage(msg.to, msg.text);
         this.bus.send('user', to, text);
         this.backend?.onUserMessage(to, text);
@@ -566,6 +642,22 @@ export class Foreman {
       target = id;
     }
     return { to: target, text: body };
+  }
+
+  async executeTool(agentId: string, tool: string, args: Record<string, unknown>): Promise<{ text: string; isError?: boolean }> {
+    const a = this.agent(agentId);
+    const role = a?.role === "lead" ? "lead" : "worker";
+    if (this.backend && "executeTool" in this.backend && typeof (this.backend as any).executeTool === "function") {
+      return (this.backend as any).executeTool(agentId, role, tool, args);
+    }
+    const { executeTool } = await import("./agents/antigravity/tools.js");
+    return executeTool(this, agentId, role, tool, args, {
+      onReview: () => {},
+      onChangesRequested: () => {},
+      onTasksChanged: () => {},
+      onMergeRequested: () => {},
+      onWaiting: () => {},
+    });
   }
 
   taskAction(taskId: string, action: 'reassign' | 'cancel' | 'retry' | 'prioritize', arg?: string): void {

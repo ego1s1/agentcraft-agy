@@ -34,6 +34,14 @@ npm run start -- --backend claude --repo C:\path\to\your\repo
 # personal use only: your local `claude` CLI login instead of an API key
 npm run start -- --backend claude --repo C:\path\to\your\repo --use-claude-login
 
+# real agents on Antigravity instead: needs the `agy` CLI on PATH (`agy --version`
+# must work; its first run signs you in with your Google account)
+npm run start -- --backend antigravity --repo C:\path\to\your\repo
+# --agy-bin <path> when agy is not on PATH; --agy-model <m> (or --lead-model /
+# --worker-model; defaults lead gemini-3.8-flash-high, workers gemini-3.8-flash-low);
+# --effort low|medium|high|max; --transient-retries <n> (default 3) re-runs turns
+# that die on network blips instead of blocking the task immediately
+
 # simulated team on a fresh sandbox repo (no API calls) - for demos and screenshot QA
 npm run start -- --backend sim --reset --speed 2
 

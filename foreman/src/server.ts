@@ -1,7 +1,7 @@
-// WebSocket server: ws://127.0.0.1:<port>. Clients send `hello` and get a `snapshot`, then every
-// upsert. Multiple clients (the mod + CLI tools) are supported. Any browser origin (also `null`) and
-// non-loopback Host headers are rejected, so a web page cannot drive your agents.
-import type { IncomingMessage } from 'node:http';
+// WebSocket + HTTP server: ws://127.0.0.1:<port> and http://127.0.0.1:<port>/api/tool.
+// Clients send `hello` and get a `snapshot`, then every upsert. Multiple clients (the mod + CLI tools) are supported.
+// Any browser origin (also `null`) and non-loopback Host headers are rejected, so a web page cannot drive your agents.
+import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Logger } from './context.js';
 import type { Foreman } from './foreman.js';
@@ -20,7 +20,7 @@ export interface ServerOptions {
 const LOOPBACK_HOST = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
 /**
- * Why a WebSocket upgrade is refused, or undefined to accept. The mod (Java HttpClient) and our
+ * Why a WebSocket upgrade or HTTP request is refused, or undefined to accept. The mod (Java HttpClient) and our
  * CLI tools send no Origin header; every browser does, and a sandboxed iframe, a data: URL or a
  * file:// page sends the literal `null`, so any Origin at all - `null` included - is a web page.
  * The Host must be a loopback name, so a DNS-rebinding page cannot reach us under its own name.
@@ -42,6 +42,7 @@ interface Client {
 }
 
 export class ForemanServer {
+  private httpServer: http.Server | undefined;
   private wss: WebSocketServer | undefined;
   private clients = new Set<Client>();
   private unsub: (() => void) | undefined;
@@ -60,9 +61,11 @@ export class ForemanServer {
 
   start(): Promise<number> {
     return new Promise((resolve, reject) => {
+      const server = http.createServer((req, res) => this.handleHttpRequest(req, res));
+      this.httpServer = server;
+
       const wss = new WebSocketServer({
-        host: this.opts.host,
-        port: this.opts.port,
+        server,
         maxPayload: 4 * 1024 * 1024,
         verifyClient: (info: { origin?: string; req: IncomingMessage }) => {
           const why = refuseReason(info.req, !!this.opts.allowBrowserOrigins);
@@ -72,13 +75,16 @@ export class ForemanServer {
         },
       });
       this.wss = wss;
-      wss.once('error', (e) => reject(e));
-      wss.once('listening', () => {
-        const addr = wss.address();
+
+      server.once('error', (e) => reject(e));
+      server.listen(this.opts.port, this.opts.host, () => {
+        const addr = server.address();
         this.port = typeof addr === 'object' && addr ? addr.port : this.opts.port;
+        server.on('error', (e) => this.opts.log.error(`http server: ${e.message}`));
         wss.on('error', (e) => this.opts.log.error(`ws server: ${e.message}`));
         resolve(this.port);
       });
+
       wss.on('connection', (ws, req) => this.onConnection(ws, req));
       this.unsub = this.foreman.subscribe((m) => this.broadcast(m));
       this.heartbeat = setInterval(() => {
@@ -97,6 +103,50 @@ export class ForemanServer {
       }, 15_000);
       this.heartbeat.unref?.();
     });
+  }
+
+  private handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
+    const why = refuseReason(req, !!this.opts.allowBrowserOrigins);
+    if (why) {
+      this.opts.log.warn(`rejected HTTP request: ${why}`);
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: why }));
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/api/tool') {
+      let body = '';
+      req.on('data', (chunk) => {
+        body += chunk;
+      });
+      req.on('end', async () => {
+        try {
+          const data = JSON.parse(body || '{}');
+          const { agentId, tool, args } = data;
+          if (!agentId || !tool) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'agentId and tool are required' }));
+            return;
+          }
+          const result = await this.foreman.executeTool(agentId, tool, args ?? {});
+          res.writeHead(result.isError ? 400 : 200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+        } catch (e) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: (e as Error).message }));
+        }
+      });
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', version: PROTOCOL_VERSION }));
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
   }
 
   private onConnection(ws: WebSocket, req: IncomingMessage): void {
@@ -181,8 +231,19 @@ export class ForemanServer {
       }
     }
     await new Promise<void>((resolve) => {
-      if (!this.wss) return resolve();
-      this.wss.close(() => resolve());
+      if (!this.wss && !this.httpServer) return resolve();
+      let pending = 0;
+      const done = () => {
+        if (--pending <= 0) resolve();
+      };
+      if (this.wss) {
+        pending++;
+        this.wss.close(done);
+      }
+      if (this.httpServer) {
+        pending++;
+        this.httpServer.close(done);
+      }
       setTimeout(() => {
         for (const c of this.clients) c.ws.terminate();
         resolve();

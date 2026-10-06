@@ -58,7 +58,7 @@ public class TaskScreen extends Screen {
 
 	private record Btn(String id, String label, int x, int y, int w, int h, boolean primary, boolean enabled, @Nullable String agent) {
 		boolean hit(double mx, double my) {
-			return mx >= x && mx < x + w && my >= y && my < y + h;
+			return mx >= x && mx <= x + w && my >= y && my <= y + h;
 		}
 	}
 
@@ -454,10 +454,17 @@ public class TaskScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() == 0) {
+		if (event.button() == InputConstants.MOUSE_BUTTON_LEFT || event.button() == 0) {
 			for (Btn b : List.copyOf(buttons)) {
-				if (b.enabled() && b.hit(event.x(), event.y())) {
-					press(b);
+				if (b.hit(event.x(), event.y())) {
+					if (b.enabled()) {
+						press(b);
+					} else if (task() != null) {
+						// Disabled buttons were silently ignoring clicks, leaving users
+						// wondering why nothing happens: say why instead.
+						feedback = "Foreman offline: actions are disabled";
+						feedbackError = true;
+					}
 					return true;
 				}
 			}
