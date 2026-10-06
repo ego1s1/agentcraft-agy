@@ -16,6 +16,22 @@
 #   ./tools/run.sh --repo ~/git/mori --prism
 #                  # one click: Foreman + Prism instance straight into AgentCraft HQ
 #
+# Options:
+#   --repo <path>        git repo for the team (repeatable, required)
+#   --backend <name>     opencode (default) | agy | claude | sim; oc also works
+#   --preset <name>      heavy | medium (default) | light; explicit model flags win
+#   --goal "<text>"      submit a goal at startup
+#   --port N             Foreman port (default 7878, env AGENTCRAFT_PORT)
+#   --profile NAME       state profile (default: backend name)
+#   --home PATH          state root (default ~/.agentcraft, env AGENTCRAFT_HOME)
+#   --no-game            Foreman only, no Minecraft (implied by --prism)
+#   --no-foreman         game only; expects a Foreman already listening
+#   --dev / --reset      muted background client / wipe the profile first
+#   --foreman-arg VALUE  extra Foreman flag, repeatable (e.g. --model <m>)
+#   --prism [--prism-instance ID] [--prism-world NAME]
+#                        launch the Prism instance instead of the dev client
+#   --help               this text
+#
 # Everything after `--` is forwarded to the Foreman as repeated --foreman-arg
 # values (one argv element each, so `-- --transient-retries 5` works).
 # With --prism the dev Minecraft client is skipped: run.sh starts only the
