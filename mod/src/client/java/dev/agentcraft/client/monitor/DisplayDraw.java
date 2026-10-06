@@ -61,11 +61,8 @@ public final class DisplayDraw {
 
 	/** Opaque (solid pass, depth-writing) quads sampling {@code texture} (texels under 10 % alpha are cut out). */
 	public static RenderType solid(Identifier texture) {
-		// Shader pipelines only know stock programs: while a pack is active, use the
-		// stock entity-cutout type (solid pass, depth writes, Iris-native). See ShaderCompat.
-		if (ShaderCompat.shadersActive()) {
-			return RenderTypes.entityCutout(texture);
-		}
+		// NOTE: shader-aware fallbacks live here while Iris compat is worked out;
+		// currently the custom pipeline (correct without shaders). See ShaderCompat.
 		RenderType t = SOLID.get(texture);
 		if (t == null) {
 			if (solidPipeline == null) {

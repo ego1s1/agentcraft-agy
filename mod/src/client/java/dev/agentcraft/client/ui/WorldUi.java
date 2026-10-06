@@ -92,12 +92,8 @@ public final class WorldUi {
 
 	/** The GUI atlas drawn opaque in the solid pass ({@link Layer#SOLID}). */
 	public static RenderType guiAtlasSolid() {
-		// Shader pipelines (Iris and forks) only know stock programs: while a pack is
-		// active, use the stock entity-cutout type (solid pass, depth writes, cutout
-		// corners, Iris-native) instead of our custom clone. See ShaderCompat.
-		if (ShaderCompat.shadersActive()) {
-			return RenderTypes.entityCutout(Sheets.GUI_SHEET);
-		}
+		// NOTE: shader-aware fallbacks live here while Iris compat is worked out;
+		// currently the custom pipeline (correct without shaders). See ShaderCompat.
 		if (guiAtlasSolidType == null) {
 			solidPipeline = RenderPipeline.builder(RenderPipelines.WORLD_TEXT_SNIPPET)
 				.withLocation(AgentCraft.id("pipeline/world_ui_solid"))
