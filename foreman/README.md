@@ -20,6 +20,8 @@ Minecraft is closed, and survives restarts.
      |- Notifier      src/notifier.ts    desktop notification + console bell when you are needed
      |- Store         src/store.ts       atomic JSON state + JSONL logs under AGENTCRAFT_HOME
      `- Backend       claude: src/agents/claude/  (Claude Agent SDK sessions)
+                      antigravity: src/agents/antigravity/  (agy CLI turns)
+                      opencode: src/agents/opencode/  (opencode CLI turns)
                       sim:    src/agents/sim/     (deterministic scripted team, real git)
 ```
 
@@ -323,8 +325,9 @@ The repo id is the demo dir name: `sim-demo-showcase` / `sim-demo-showcase-late`
 
 ```sh
 npm test            # vitest: protocol, task graph, persistence, decisions, repos/merges, policy,
-                    #         git push block, WS + full sim run, showcase states, claude
-                    #         orchestration, restart recovery and steering (fake SDK)
+                    #         git push block, WS + full sim run, showcase states, claude/antigravity/
+                    #         opencode orchestration, transient retries, presets, /model picker,
+                    #         restart recovery and steering (fake SDK/CLIs)
 npx tsc --noEmit
 npm run check       # all of the above + protocol doc freshness
 ```

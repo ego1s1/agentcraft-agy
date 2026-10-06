@@ -2,15 +2,15 @@
 
 # AgentCraft
 
-**A team of Claude agents doing real work on your code, inside a Minecraft studio you can walk around in.**
+**A team of AI agents doing real work on your code, inside a Minecraft studio you can walk around in.**
 
-*Powered by Claude*
+*Backends: OpenCode (default) · Claude · Antigravity*
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-c9a227)](LICENSE)
 [![Minecraft 26.3](https://img.shields.io/badge/Minecraft-26.3-8fa98b)](https://www.minecraft.net)
 [![Fabric](https://img.shields.io/badge/mod%20loader-Fabric-d97757)](https://fabricmc.net)
 [![Claude Agent SDK](https://img.shields.io/badge/agents-Claude%20Agent%20SDK-2fa3a0)](https://code.claude.com/docs/en/agent-sdk/overview)
-[![Tests](https://img.shields.io/badge/tests-487%20passing-3b2a20)](foreman/test)
+[![Tests](https://img.shields.io/badge/tests-556%20passing-3b2a20)](foreman/test)
 
 <img src="docs/img/readme/hero.jpg" alt="The AgentCraft HQ at golden hour" width="100%">
 
@@ -125,7 +125,7 @@ what. Up close, monitors and screens tell you exactly how.
 
 ## Proven with real agents
 
-This is not a mockup. These screenshots come from a real run with Claude agents on a sample repo,
+This is not a mockup. These screenshots come from a real run with agents on a sample repo,
 driven entirely through the game: a goal typed into the console, questions and permission prompts
 answered in game, merges reviewed in the diff screen, including a merge conflict sent back to the
 worker and resolved. The game was restarted mid run and the Foreman was taken offline and brought
@@ -295,7 +295,7 @@ flowchart LR
         UI["Console, decisions,<br/>diff review, library"]
     end
     subgraph foreman ["Foreman (Node + TypeScript)"]
-        Team["Lead + workers<br/>(Claude Agent SDK)"]
+        Team["Lead + workers<br/>(opencode / Claude / agy)"]
         State["Task graph, messages,<br/>memory, decisions"]
         Git["Worktrees, diffs,<br/>approved merges"]
     end
@@ -306,7 +306,7 @@ flowchart LR
 
 - **The Foreman** (`foreman/`) runs the agents and owns all the state: tasks and their
   dependencies, messages, shared memory, decisions and worktrees. Everything is saved to disk and
-  Claude sessions resume by id, so it survives restarts and crashes.
+  agent sessions resume by id, so it survives restarts and crashes.
 - **The mod** (`mod/`) is the window and the controls. It draws what the Foreman knows and sends
   back what you decide. If the game closes, no work is lost.
 - **The sim backend** is a scripted team that exercises every feature with real git edits. It powers
@@ -336,7 +336,8 @@ flowchart LR
 
 ## Costs
 
-The claude backend bills per token to your Anthropic or cloud provider account. A small goal costs a
+Real-agent backends bill to your own accounts: Claude per token to Anthropic or your cloud
+provider, Antigravity and OpenCode to whatever those CLIs use. A small goal on Claude costs a
 few dollars. For a cheaper team:
 
 ```powershell
