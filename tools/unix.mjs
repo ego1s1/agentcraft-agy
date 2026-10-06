@@ -241,6 +241,9 @@ async function launch(opt, summary) {
     AGENTCRAFT_PORT: String(fmPort), AGENTCRAFT_DEV_PORT: String(opt['dev-port']),
     AGENTCRAFT_HOME: opt.home, AGENTCRAFT_PROFILE: opt.profile,
     AGENTCRAFT_MUTE: opt.dev ? '1' : '0', AGENTCRAFT_FOCUS: opt.dev ? '0' : '1',
+    // Single repo (run.sh exports it, or exactly one --repo here): the console
+    // submits goals straight there instead of asking which repo.
+    ...(process.env.AGENTCRAFT_REPO ? { AGENTCRAFT_REPO: process.env.AGENTCRAFT_REPO } : opt.repo.length === 1 ? { AGENTCRAFT_REPO: opt.repo[0] } : {}),
   };
   game = { ...start('/bin/sh', [path.join(root, 'mod', 'gradlew'), 'runClient', '--console=plain'], path.join(root, 'mod'), path.join(logDir, 'unix-game.log'), env), devPort: opt['dev-port'], foremanPort: fmPort };
   saveJson(gameFile, game);

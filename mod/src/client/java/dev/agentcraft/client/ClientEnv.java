@@ -37,6 +37,12 @@ public final class ClientEnv {
 	public static final boolean MUTE = flag("AGENTCRAFT_MUTE", DEV_RUN);
 	public static final boolean TAKE_FOCUS = flag("AGENTCRAFT_FOCUS", !DEV_RUN);
 	public static final boolean AUTO_WORLD = flag("AGENTCRAFT_AUTOWORLD", DEV_RUN);
+	/**
+	 * Single-repo launch hint (run.sh sets this when exactly one --repo is in
+	 * play, defaulting to $PWD): the console submits goals straight to the
+	 * matching registered repo instead of asking which repo. Null = ask as before.
+	 */
+	public static final String REPO = raw("AGENTCRAFT_REPO");
 
 	public static String raw(String envName) {
 		String prop = System.getProperty(envName.toLowerCase(Locale.ROOT).replace('_', '.'));

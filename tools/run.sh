@@ -18,7 +18,7 @@
 #                  # (Prism is the default game; --headless uses the dev client)
 #
 # Options:
-#   --repo <path>        git repo for the team (repeatable, required)
+#   --repo <path>        git repo for the team (repeatable; default: current dir)
 #   --backend <name>     opencode (default) | agy | claude | sim; oc also works
 #   --preset <name>      heavy | medium (default) | light; explicit model flags win
 #   --goal "<text>"      submit a goal at startup
@@ -115,8 +115,37 @@ if [ -n "$preset" ]; then
 fi
 
 if [ "$repos" -eq 0 ] && [ "$kill_server" -eq 0 ]; then
-  echo "run.sh: --repo <path> is required (repeatable)" >&2
-  exit 2
+  # No --repo: use the current directory's git repo (so `agentcraft --goal ...`
+  # from a checkout just works). Matches unix.mjs's root check (.git present).
+  pwd_repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  if [ ! -d "$pwd_repo/.git" ]; then
+    echo "run.sh: --repo <path> is required (current dir is not a git repo: $pwd_repo)" >&2
+    exit 2
+  fi
+  set -- --repo "$pwd_repo" "$@"
+  repos=1
+fi
+
+# Single repo (explicit or pwd default): tell the game which one, so the
+# console submits goals straight there instead of asking which repo.
+# Multi-repo launches leave it unset and the console asks as before.
+if [ "$repos" -eq 1 ] && [ "$kill_server" -eq 0 ]; then
+  _saw_repo=0
+  _single_repo=""
+  for _a in "$@"; do
+    if [ "$_saw_repo" -eq 1 ]; then _single_repo="$_a"; break; fi
+    case "$_a" in
+      --repo) _saw_repo=1 ;;
+      --repo=*) _single_repo="${_a#--repo=}"; break ;;
+    esac
+  done
+  if [ -n "$_single_repo" ]; then
+    case "$_single_repo" in
+      "~"|"~"/*) _single_repo="$HOME${_single_repo#\~}" ;;
+    esac
+    export AGENTCRAFT_REPO="$_single_repo"
+  fi
+  unset _saw_repo _single_repo _a
 fi
 
 if [ "$kill_server" -eq 1 ]; then

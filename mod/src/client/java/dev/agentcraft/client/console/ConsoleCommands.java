@@ -1,5 +1,6 @@
 package dev.agentcraft.client.console;
 
+import dev.agentcraft.client.ClientEnv;
 import dev.agentcraft.client.decisions.DecisionQueue;
 import dev.agentcraft.client.foreman.ForemanState;
 import dev.agentcraft.client.foreman.Protocol;
@@ -133,10 +134,45 @@ public final class ConsoleCommands {
 
 	private static Intent goal(String text, ForemanState s) {
 		List<Repo> repos = new ArrayList<>(s.repos().values());
+		// Single-repo launch (AGENTCRAFT_REPO from run.sh): go straight there,
+		// even when the Foreman still has stale repos from earlier launches.
+		if (ClientEnv.REPO != null && !ClientEnv.REPO.isBlank()) {
+			Repo match = matchRepo(repos, ClientEnv.REPO.strip());
+			if (match != null) {
+				return new Goal(text, match.id(), List.of());
+			}
+		}
 		if (repos.size() <= 1) {
 			return new Goal(text, repos.isEmpty() ? null : repos.get(0).id(), List.of());
 		}
 		return new Goal(text, defaultRepo(s), repos);
+	}
+
+	/** Match a launch repo hint against registered repos: id, full path, or dir name. */
+	private static @Nullable Repo matchRepo(List<Repo> repos, String hint) {
+		String norm = hint.replace('\\', '/');
+		while (norm.endsWith("/")) {
+			norm = norm.substring(0, norm.length() - 1);
+		}
+		String base = norm.contains("/") ? norm.substring(norm.lastIndexOf('/') + 1) : norm;
+		for (Repo r : repos) {
+			if (r.id().equalsIgnoreCase(norm) || r.id().equalsIgnoreCase(base)) {
+				return r;
+			}
+		}
+		for (Repo r : repos) {
+			if (r.path() == null) {
+				continue;
+			}
+			String p = r.path().replace('\\', '/');
+			while (p.endsWith("/")) {
+				p = p.substring(0, p.length() - 1);
+			}
+			if (p.equalsIgnoreCase(norm)) {
+				return r;
+			}
+		}
+		return null;
 	}
 
 	/** The repo a new goal goes to by default: the current goal's repo, else the most recently added. */
