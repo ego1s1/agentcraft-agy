@@ -22,7 +22,9 @@ Short form for the common case (defaults to the opencode backend):
 ./tools/run.sh --repo /path/to/repo -- --transient-retries 5   # extra Foreman flags after --
 ```
 
-`--goal "<text>"` submits a goal at startup; `--repo` is repeatable. The backend
+`--goal "<text>"` submits a goal at startup; `--repo` is repeatable. If a previous
+Foreman still holds the port, `./tools/run.sh --kill [--port N]` kills it
+(only `node` processes; anything else is refused with the pid). The backend
 retries transient network errors automatically (`--transient-retries <n>`,
 default 3, `0` disables); use `/task <id> retry` in game chat (or the Task Wall
 Retry button) once the top banner shows the Foreman link is back.

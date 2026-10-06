@@ -30,6 +30,8 @@
 #   --foreman-arg VALUE  extra Foreman flag, repeatable (e.g. --model <m>)
 #   --prism [--prism-instance ID] [--prism-world NAME]
 #                        launch the Prism instance instead of the dev client
+#   --kill               kill the Foreman listening on --port (default 7878)
+#                        and exit; refuses non-node processes
 #   --help               this text
 #
 # Everything after `--` is forwarded to the Foreman as repeated --foreman-arg
@@ -59,6 +61,7 @@ home_dir=""
 prism=0
 prism_instance=""
 prism_world=""
+kill_server=0
 repos=0
 
 # Single pass over the original "$@" (n items): --goal is consumed, everything
@@ -78,6 +81,7 @@ while [ "$i" -lt "$n" ]; do
     --prism-instance=*) prism_instance="${1#--prism-instance=}"; prism=1; shift; i=$((i + 1)); continue ;;
     --prism-world) prism_world="${2:?--prism-world needs a value}"; prism=1; shift 2; i=$((i + 2)); continue ;;
     --prism-world=*) prism_world="${1#--prism-world=}"; prism=1; shift; i=$((i + 1)); continue ;;
+    --kill) kill_server=1; shift; i=$((i + 1)); continue ;;
     --backend) [ $# -ge 2 ] || { echo "run.sh: --backend needs a value" >&2; exit 2; }; backend_given=1; backend_val="$2" ;;
     --backend=*) backend_given=1; backend_val="${1#--backend=}" ;;
     --port) port="${2:?run.sh: --port needs a value}" ;;
@@ -104,9 +108,50 @@ if [ -n "$preset" ]; then
   set -- "$@" --foreman-arg "--preset=$preset"
 fi
 
-if [ "$repos" -eq 0 ]; then
+if [ "$repos" -eq 0 ] && [ "$kill_server" -eq 0 ]; then
   echo "run.sh: --repo <path> is required (repeatable)" >&2
   exit 2
+fi
+
+if [ "$kill_server" -eq 1 ]; then
+  # Kill the Foreman listening on :$port (a previous server holding the port).
+  pids=""
+  if command -v lsof >/dev/null 2>&1; then
+    pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+  elif command -v ss >/dev/null 2>&1; then
+    pids="$(ss -ltnp 2>/dev/null | grep ":$port " | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u || true)"
+  else
+    echo "run.sh: need lsof or ss to find the listener on :$port" >&2
+    exit 2
+  fi
+  if [ -z "$pids" ]; then
+    echo "run.sh: nothing listening on :$port"
+    exit 0
+  fi
+  for pid in $pids; do
+    comm="$(ps -o comm= -p "$pid" 2>/dev/null || true)"
+    comm="${comm##*/}" # macOS reports the full binary path; we only need the name
+    case "$comm" in
+      node | nodejs) ;;
+      *)
+        echo "run.sh: :$port is held by pid $pid ($comm), not a Foreman (node); refusing to kill" >&2
+        echo "run: stop it yourself, or pick another port with --port N" >&2
+        exit 2
+        ;;
+    esac
+    echo "killing pid $pid ($comm) on :$port ..."
+    kill "$pid" 2>/dev/null || true
+  done
+  # give TERM a moment, then escalate survivors
+  sleep 2
+  for pid in $pids; do
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "pid $pid survived TERM; kill -9 ..."
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+  done
+  echo "run.sh: :$port is free"
+  exit 0
 fi
 
 if [ "$backend_given" -eq 0 ]; then
