@@ -187,9 +187,24 @@ tools\launch.ps1 -Backend antigravity -Repo C:\path\to\your\repo
 
 ```sh
 node tools/unix.mjs launch --backend antigravity --repo /path/to/your/repo
-./tools/run.sh --repo /path/to/your/repo --goal "Add a --version flag"   # antigravity by default
+./tools/run.sh --repo /path/to/your/repo --backend agy --goal "Add a --version flag"
 ./tools/run.sh --repo /path/to/your/repo --goal "..." --prism            # + Prism, one click
 ```
+
+**Or run the agents on OpenCode (the default backend).** Install the OpenCode CLI
+so `opencode --version` works (`opencode auth login` signs you in; `opencode models`
+lists what's available). Then just leave `--backend` off:
+
+```sh
+./tools/run.sh --repo /path/to/your/repo --goal "Add a --version flag"   # opencode by default
+./tools/run.sh --repo /path/to/your/repo --preset heavy --prism          # heavy preset + Prism
+```
+
+Handy shortcut (zsh): `alias agentcraft='/path/to/agentcraft/tools/run.sh'`, then
+`agentcraft --repo ~/git/mori --goal "..."`. Weight presets (`heavy|medium|light`) pick
+the models per backend and can be changed any time with `/model heavy` in game chat;
+`/model list` shows numbered pickable models, `/model <n|name>` and
+`/model lead|worker <name>` pick them. Default model: `opencode-go/muse-spark-1.3-contributor`.
 
 Useful Foreman flags for this backend: `--agy-bin <path>` (when `agy` is not on `PATH`),
 `--agy-model <m>` (or `--lead-model` / `--worker-model` separately; defaults: lead
@@ -265,6 +280,8 @@ All keys can be rebound in Options, Controls.
 | `/pause @x`, `/resume @x` | Pause an agent, keeping its task |
 | `/stop @x`, `/spawn @x [task]` | Take an agent off shift, or bring one on |
 | `/repo add <path>`, `/repos` | Register and list repos |
+| `/model [heavy\|medium\|light\|list\|<n\|name>\|lead\|worker <name>]` | Show or pick models, presets and effort |
+| `/task <id> retry\|prioritize\|cancel` | Steer a task (same as the Task Wall buttons) |
 | `/help` | Everything else |
 
 <br>
