@@ -15,6 +15,7 @@
 #   ./tools/run.sh --repo ~/git/mori -- --transient-retries 5
 #   ./tools/run.sh --repo ~/git/mori --prism
 #                  # one click: Foreman + Prism instance straight into AgentCraft HQ
+#                  # (Prism is the default game; --headless uses the dev client)
 #
 # Options:
 #   --repo <path>        git repo for the team (repeatable, required)
@@ -24,22 +25,22 @@
 #   --port N             Foreman port (default 7878, env AGENTCRAFT_PORT)
 #   --profile NAME       state profile (default: backend name)
 #   --home PATH          state root (default ~/.agentcraft, env AGENTCRAFT_HOME)
-#   --no-game            Foreman only, no Minecraft (implied by --prism)
+#   --no-game            Foreman only, no game at all
 #   --no-foreman         game only; expects a Foreman already listening
 #   --dev / --reset      muted background client / wipe the profile first
 #   --foreman-arg VALUE  extra Foreman flag, repeatable (e.g. --model <m>)
 #   --prism [--prism-instance ID] [--prism-world NAME]
-#                        launch the Prism instance instead of the dev client
+#                        launch the Prism instance (this is the default game;
+#                        use --headless for the Gradle dev client instead)
+#   --headless           run the Gradle dev client instead of Prism
 #   --kill               kill the Foreman listening on --port (default 7878)
 #                        and exit; refuses non-node processes
 #   --help               this text
 #
 # Everything after `--` is forwarded to the Foreman as repeated --foreman-arg
 # values (one argv element each, so `-- --transient-retries 5` works).
-# With --prism the dev Minecraft client is skipped: run.sh starts only the
-# Foreman, then launches the Prism instance (default: the only instance, else
-# --prism-instance) and joins --prism-world (default: AgentCraft HQ when that
-# world exists in the instance). The game inherits AGENTCRAFT_PORT/HOME/PROFILE
+# The game is the Prism instance by default; --headless runs the Gradle dev
+# client instead. The game inherits AGENTCRAFT_PORT/HOME/PROFILE
 # so the mod links to this Foreman. Stop the Foreman afterwards with
 # `node tools/unix.mjs stop --profile <name>`.
 # See `node tools/unix.mjs launch --help` and foreman --help for full options.
@@ -59,8 +60,11 @@ port="${AGENTCRAFT_PORT:-7878}"
 profile=""
 home_dir=""
 prism=0
+prism_given=0
 prism_instance=""
 prism_world=""
+headless=0
+no_game=0
 kill_server=0
 repos=0
 
@@ -76,11 +80,13 @@ while [ "$i" -lt "$n" ]; do
     --goal=*) goal="${1#--goal=}"; shift; i=$((i + 1)); continue ;;
     --preset) preset="${2:?--preset needs a value}"; shift 2; i=$((i + 2)); continue ;;
     --preset=*) preset="${1#--preset=}"; shift; i=$((i + 1)); continue ;;
-    --prism) prism=1; shift; i=$((i + 1)); continue ;;
-    --prism-instance) prism_instance="${2:?--prism-instance needs a value}"; prism=1; shift 2; i=$((i + 2)); continue ;;
-    --prism-instance=*) prism_instance="${1#--prism-instance=}"; prism=1; shift; i=$((i + 1)); continue ;;
-    --prism-world) prism_world="${2:?--prism-world needs a value}"; prism=1; shift 2; i=$((i + 2)); continue ;;
-    --prism-world=*) prism_world="${1#--prism-world=}"; prism=1; shift; i=$((i + 1)); continue ;;
+    --prism) prism=1; prism_given=1; shift; i=$((i + 1)); continue ;;
+    --prism-instance) prism_instance="${2:?--prism-instance needs a value}"; prism=1; prism_given=1; shift 2; i=$((i + 2)); continue ;;
+    --prism-instance=*) prism_instance="${1#--prism-instance=}"; prism=1; prism_given=1; shift; i=$((i + 1)); continue ;;
+    --prism-world) prism_world="${2:?--prism-world needs a value}"; prism=1; prism_given=1; shift 2; i=$((i + 2)); continue ;;
+    --prism-world=*) prism_world="${1#--prism-world=}"; prism=1; prism_given=1; shift; i=$((i + 1)); continue ;;
+    --headless) headless=1; shift; i=$((i + 1)); continue ;;
+    --no-game) no_game=1 ;;
     --kill) kill_server=1; shift; i=$((i + 1)); continue ;;
     --backend) [ $# -ge 2 ] || { echo "run.sh: --backend needs a value" >&2; exit 2; }; backend_given=1; backend_val="$2" ;;
     --backend=*) backend_given=1; backend_val="${1#--backend=}" ;;
@@ -161,12 +167,21 @@ fi
 [ "$backend_val" = "agy" ] && backend_val="antigravity"
 [ "$backend_val" = "oc" ] && backend_val="opencode"
 
+if [ "$headless" -eq 1 ] && [ "$prism_given" -eq 1 ]; then
+  echo "run.sh: --headless and --prism contradict each other" >&2
+  exit 2
+fi
+if [ "$headless" -eq 0 ]; then
+  prism=1
+fi
+
 if [ "$prism" -eq 0 ]; then
   exec node "$ROOT/tools/unix.mjs" launch "$@"
 fi
 
-# --prism: Foreman via unix.mjs (no dev client), then the Prism instance.
-# unix.mjs profile default is the backend name; home default is ~/.agentcraft.
+# Prism is the default game: Foreman via unix.mjs (no dev client), then the
+# Prism instance. unix.mjs profile default is the backend name; home default
+# is ~/.agentcraft.
 [ -z "$profile" ] && profile="$backend_val"
 [ -z "$home_dir" ] && home_dir="${AGENTCRAFT_HOME:-$HOME/.agentcraft}"
 
@@ -176,6 +191,11 @@ if command -v curl >/dev/null 2>&1 && curl -s --max-time 2 "http://127.0.0.1:$po
   echo "Reusing Foreman on :$port ..."
 else
   node "$ROOT/tools/unix.mjs" launch --no-game "$@" || exit "$?"
+fi
+
+if [ "$no_game" -eq 1 ]; then
+  echo "Foreman is up; --no-game: skipping the game."
+  exit 0
 fi
 
 PRISM_BIN="$(command -v prismlauncher 2>/dev/null || true)"

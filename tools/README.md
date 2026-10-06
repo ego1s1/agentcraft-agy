@@ -29,11 +29,12 @@ retries transient network errors automatically (`--transient-retries <n>`,
 default 3, `0` disables); use `/task <id> retry` in game chat (or the Task Wall
 Retry button) once the top banner shows the Foreman link is back.
 
-One-click Prism start: `--prism` starts only the Foreman, then launches the
-Prism instance straight into the world (defaults: the only instance, else
-`--prism-instance ID`; `--prism-world NAME`, default `AgentCraft HQ` when that
-world exists in the instance). The game inherits `AGENTCRAFT_PORT/HOME/PROFILE`
-so the mod links to this Foreman:
+One-click Prism start (the default game): `--prism` is implied, so plain `run.sh`
+starts the Foreman, then launches the Prism instance straight into the world
+(defaults: the only instance, else `--prism-instance ID`; `--prism-world NAME`,
+default `AgentCraft HQ` when that world exists in the instance). `--headless`
+runs the Gradle dev client instead; `--no-game` starts only the Foreman. The game
+inherits `AGENTCRAFT_PORT/HOME/PROFILE` so the mod links to this Foreman:
 
 ```sh
 ./tools/run.sh --repo /path/to/repo --goal "Add a --version flag" --prism
