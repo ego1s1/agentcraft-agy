@@ -92,6 +92,11 @@ public final class WorldUi {
 
 	/** The GUI atlas drawn opaque in the solid pass ({@link Layer#SOLID}). */
 	public static RenderType guiAtlasSolid() {
+		// Shader pipelines (Iris and forks) cannot use our custom program: fall back
+		// to the vanilla text pipeline while a pack is active (see ShaderCompat).
+		if (ShaderCompat.shadersActive()) {
+			return guiAtlas();
+		}
 		if (guiAtlasSolidType == null) {
 			solidPipeline = RenderPipeline.builder(RenderPipelines.WORLD_TEXT_SNIPPET)
 				.withLocation(AgentCraft.id("pipeline/world_ui_solid"))

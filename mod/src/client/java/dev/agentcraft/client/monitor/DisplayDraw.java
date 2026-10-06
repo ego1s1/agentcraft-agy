@@ -7,6 +7,7 @@ import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.api.pipeline.ColorTargetState;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import dev.agentcraft.AgentCraft;
+import dev.agentcraft.client.ui.ShaderCompat;
 import dev.agentcraft.client.ui.WorldUi;
 import java.util.HashMap;
 import java.util.Map;
@@ -60,6 +61,11 @@ public final class DisplayDraw {
 
 	/** Opaque (solid pass, depth-writing) quads sampling {@code texture} (texels under 10 % alpha are cut out). */
 	public static RenderType solid(Identifier texture) {
+		// Shader pipelines (Iris and forks) cannot use our custom program: fall back
+		// to the vanilla text pipeline while a pack is active (see ShaderCompat).
+		if (ShaderCompat.shadersActive()) {
+			return RenderTypes.text(texture);
+		}
 		RenderType t = SOLID.get(texture);
 		if (t == null) {
 			if (solidPipeline == null) {
