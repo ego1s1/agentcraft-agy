@@ -457,6 +457,7 @@ public class TaskScreen extends Screen {
 		if (event.button() == InputConstants.MOUSE_BUTTON_LEFT || event.button() == 0) {
 			for (Btn b : List.copyOf(buttons)) {
 				if (b.hit(event.x(), event.y())) {
+					AgentCraft.LOGGER.info("TaskScreen click at ({},{}) hit button '{}' enabled={}", event.x(), event.y(), b.id(), b.enabled());
 					if (b.enabled()) {
 						press(b);
 					} else if (task() != null) {
